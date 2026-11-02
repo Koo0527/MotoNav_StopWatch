@@ -244,23 +244,24 @@ object MusicBridge {
             info = "收到$name · ${mc.packageName} · 触摸 $touchInfo"
             BleLink.sendEvent("#ZACK,2")
             try {
-                val code = when (action) {
-                    "P" -> KeyEvent.KEYCODE_MEDIA_PREVIOUS
-                    "N" -> KeyEvent.KEYCODE_MEDIA_NEXT
-                    else -> KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
-                }
-                val now = SystemClock.uptimeMillis()
-                // 成对发送按下和抬起；发往所选会话，避免控制到别的播放器。
-                val down = mc.dispatchMediaButtonEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, code, 0))
-                val up = mc.dispatchMediaButtonEvent(KeyEvent(now, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, code, 0))
-                if (!down && !up) {
-                    when (action) {
-                        "P" -> mc.transportControls.skipToPrevious()
-                        "N" -> mc.transportControls.skipToNext()
-                        "T" -> if (beforePlaying) mc.transportControls.pause() else mc.transportControls.play()
-                    }
+                if (action == "T") {
+                    // 播放/暂停优先直接调用 TransportControls，绝对精准，杜绝被手机系统线控误当作双击切歌
+                    if (beforePlaying) mc.transportControls.pause() else mc.transportControls.play()
                     info += " · 会话控制"
-                } else info += " · 媒体按键"
+                } else {
+                    val code = when (action) {
+                        "P" -> KeyEvent.KEYCODE_MEDIA_PREVIOUS
+                        else -> KeyEvent.KEYCODE_MEDIA_NEXT
+                    }
+                    val now = SystemClock.uptimeMillis()
+                    // 成对发送按下和抬起；发往所选会话，避免控制到别的播放器。
+                    val down = mc.dispatchMediaButtonEvent(KeyEvent(now, now, KeyEvent.ACTION_DOWN, code, 0))
+                    val up = mc.dispatchMediaButtonEvent(KeyEvent(now, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, code, 0))
+                    if (!down && !up) {
+                        if (action == "P") mc.transportControls.skipToPrevious() else mc.transportControls.skipToNext()
+                        info += " · 会话控制"
+                    } else info += " · 媒体按键"
+                }
                 fun check(attempt: Int) {
                     if (operation != op) return
                     val after = mc.playbackState

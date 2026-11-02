@@ -305,39 +305,19 @@ void musicTick() {
     lastCoverAnimTick = millis();
     coverSlideDx += coverFlySpeed;
     if (coverFlySpeed < 0 && coverSlideDx <= -220) {
-      // 向左离开完成 -> 下一曲
+      // 向左离开完成
       coverFlySpeed = 0;
       coverSlideDx = 0;
-      if (hidMusicMode) {
-        if (!hidMediaReady() && !appleMedia.controlReady(2)) {
-          musicAck = 7; musicAckUntil = millis() + 2500;
-        } else {
-          appleMedia.control(2);
-        }
-      } else {
-        pendingEvt = "T,M,N,0,0,2";
-        musicAck = 1; musicAckUntil = millis() + 2500;
-      }
-      CompanionMode::startVibration(100, 35);
     } else if (coverFlySpeed > 0 && coverSlideDx >= 220) {
-      // 向右离开完成 -> 上一曲
+      // 向右离开完成
       coverFlySpeed = 0;
       coverSlideDx = 0;
-      if (hidMusicMode) {
-        if (!hidMediaReady() && !appleMedia.controlReady(0)) {
-          musicAck = 7; musicAckUntil = millis() + 2500;
-        } else {
-          appleMedia.control(0);
-        }
-      } else {
-        pendingEvt = "T,M,P,0,0,0";
-        musicAck = 1; musicAckUntil = millis() + 2500;
+    } else if (abs(coverFlySpeed) < 30) {
+      // 只有在主动回弹模式 (coverFlySpeed = +/-20) 时才判断回弹归位
+      if ((coverFlySpeed < 0 && coverSlideDx <= 0) || (coverFlySpeed > 0 && coverSlideDx >= 0)) {
+        coverSlideDx = 0;
+        coverFlySpeed = 0;
       }
-      CompanionMode::startVibration(100, 35);
-    } else if ((coverFlySpeed < 0 && coverSlideDx <= 0) || (coverFlySpeed > 0 && coverSlideDx >= 0)) {
-      // 弹性回弹原位完成
-      coverSlideDx = 0;
-      coverFlySpeed = 0;
     }
     musicDirty = true;
   }

@@ -44,42 +44,40 @@ void touchInit() {
 
 // 执行上一曲 (在任意界面通用)
 static void triggerKeyPrevTrack() {
+  if (hidMusicMode) {
+    if (!hidMediaReady() && !appleMedia.controlReady(0)) {
+      musicAck = 7; musicAckUntil = millis() + 2500;
+    } else {
+      appleMedia.control(0);
+    }
+  } else {
+    pendingEvt = "T,M,P,0,0,0";
+    musicAck = 1; musicAckUntil = millis() + 2500;
+  }
   if (page == 2) {
     coverFlySpeed = +32;
-    musicDirty = true;
-  } else {
-    if (hidMusicMode) {
-      if (!hidMediaReady() && !appleMedia.controlReady(0)) {
-        musicAck = 7; musicAckUntil = millis() + 2500;
-      } else {
-        appleMedia.control(0);
-      }
-    } else {
-      pendingEvt = "T,M,P,0,0,0";
-      musicAck = 1; musicAckUntil = millis() + 2500;
-    }
   }
   CompanionMode::startVibration(120, 45);
+  musicDirty = true;
 }
 
 // 执行下一曲 (在任意界面通用)
 static void triggerKeyNextTrack() {
+  if (hidMusicMode) {
+    if (!hidMediaReady() && !appleMedia.controlReady(2)) {
+      musicAck = 7; musicAckUntil = millis() + 2500;
+    } else {
+      appleMedia.control(2);
+    }
+  } else {
+    pendingEvt = "T,M,N,0,0,2";
+    musicAck = 1; musicAckUntil = millis() + 2500;
+  }
   if (page == 2) {
     coverFlySpeed = -32;
-    musicDirty = true;
-  } else {
-    if (hidMusicMode) {
-      if (!hidMediaReady() && !appleMedia.controlReady(2)) {
-        musicAck = 7; musicAckUntil = millis() + 2500;
-      } else {
-        appleMedia.control(2);
-      }
-    } else {
-      pendingEvt = "T,M,N,0,0,2";
-      musicAck = 1; musicAckUntil = millis() + 2500;
-    }
   }
   CompanionMode::startVibration(120, 45);
+  musicDirty = true;
 }
 
 // StopWatch 实体按键交互：
@@ -332,9 +330,11 @@ void touchPoll() {
     }
 
     if (page == 2 && coverTouchActive && !volSliding) {
-      int curDx = touchX1 - touchX0;
-      int curDy = touchY1 - touchY0;
-      if (abs(curDx) > 8 && abs(curDx) > abs(curDy)) {
+      float vx = touchX1 - touchX0, vy = touchY1 - touchY0;
+      touchVectorToCanvas(vx, vy);
+      int curDx = (int)lroundf(vx);
+      int curDy = (int)lroundf(vy);
+      if (abs(curDx) > 10 && abs(curDx) > abs(curDy)) {
         coverSlideDx = constrain(curDx, -180, 180);
         musicDirty = true;
       }
@@ -374,11 +374,22 @@ void touchPoll() {
     if (page == 2 && coverTouchActive) {
       coverTouchActive = false;
       touchEat = true;
-      int dx = touchX1 - touchX0;
-      int dy = touchY1 - touchY0;
+      float vx = touchX1 - touchX0, vy = touchY1 - touchY0;
+      touchVectorToCanvas(vx, vy);
+      int dx = (int)lroundf(vx);
+      int dy = (int)lroundf(vy);
+      unsigned long pressDuration = now - touchHoldAt;
 
-      // 1. 原地轻触判定 (位移 <= 45 像素，避免误判切歌)
-      if (abs(dx) <= 45 && abs(dy) <= 45) {
+      // 1. 明确的左右横向手势切歌 (位移 >= 45 像素，且水平明显大于垂直)
+      if (abs(dx) >= 45 && abs(dx) >= (int)(abs(dy) * 1.2f)) {
+        if (dx < 0) {
+          triggerKeyNextTrack(); // 向左滑 -> 下一曲 (发指令+启动向左飞出动画)
+        } else {
+          triggerKeyPrevTrack(); // 向右滑 -> 上一曲 (发指令+启动向右飞出动画)
+        }
+      }
+      // 2. 原地轻触判定 (短按点击或位移极小，绝对优先作为点击播放/暂停，绝不误切歌)
+      else if (pressDuration < 450 || (abs(dx) <= 40 && abs(dy) <= 40)) {
         coverSlideDx = 0;
         coverFlySpeed = 0;
         float tdx = touchX0 - CX, tdy = touchY0 - CX;
@@ -389,14 +400,14 @@ void touchPoll() {
         int rdx = cx0 - 158, rdy = cy0 - 226;
         int ldx = cx0 - 308, ldy = cy0 - 226;
 
-        if (rdx * rdx + rdy * rdy <= 28 * 28) {
-          // 点击封面左下角：切换循环模式 (0: 列表, 1: 单曲, 2: 随机)
+        if (rdx * rdx + rdy * rdy <= 30 * 30) {
+          // 点击封面左下角：切换循环模式
           musicRepeatMode = (musicRepeatMode + 1) % 3;
           pendingEvt = String("T,M,R,") + String(musicRepeatMode);
           musicAck = 1; musicAckUntil = now + 2500;
           CompanionMode::startVibration(100, 35);
           musicDirty = true;
-        } else if (ldx * ldx + ldy * ldy <= 28 * 28) {
+        } else if (ldx * ldx + ldy * ldy <= 30 * 30) {
           // 点击封面右下角：切换 Like / Dislike
           musicLiked = !musicLiked;
           pendingEvt = String("T,M,L,") + (musicLiked ? "1" : "0");
@@ -419,18 +430,7 @@ void touchPoll() {
           }
         }
       }
-      // 2. 明确的左右横向手势切歌 (水平位移 >= 50 像素，且水平显著大于垂直)
-      else if (abs(dx) >= 50 && abs(dx) >= (int)(abs(dy) * 1.3f)) {
-        if (dx < -50) {
-          // 向左快速滑出离开 -> 下一曲
-          coverFlySpeed = -32;
-        } else {
-          // 向右快速滑出离开 -> 上一曲
-          coverFlySpeed = +32;
-        }
-        musicDirty = true;
-      }
-      // 3. 拖拽了但不够阈值：弹性回弹原位
+      // 3. 拖拽了但不够切歌阈值：弹性回弹原位
       else {
         if (coverSlideDx != 0) {
           coverFlySpeed = (coverSlideDx > 0) ? -20 : +20;
