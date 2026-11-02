@@ -322,21 +322,25 @@ void musicTick() {
     musicDirty = true;
   }
 
-  if (coverPendingSingleTap && (long)(millis() - lastCoverTapAt) > 320) {
+  if (coverPendingSingleTap && (long)(millis() - lastCoverTapAt) > 300) {
     coverPendingSingleTap = false;
-    if (hidMusicMode) {
-      if (!hidMediaReady() && !appleMedia.controlReady(1)) {
-        musicAck = 7; musicAckUntil = millis() + 2500;
+    static unsigned long lastPlayPauseSentAt = 0;
+    if (millis() - lastPlayPauseSentAt >= 500) {
+      lastPlayPauseSentAt = millis();
+      if (hidMusicMode) {
+        if (!hidMediaReady() && !appleMedia.controlReady(1)) {
+          musicAck = 7; musicAckUntil = millis() + 2500;
+        } else {
+          appleMedia.control(1);
+        }
       } else {
-        appleMedia.control(1);
+        pendingEvt = "T,M,T,0,0,1";
+        // 状态完全由手机 #Z 真实上报驱动，固件不进行伪反转，避免双向打架
+        musicAck = 1; musicAckUntil = millis() + 2500;
       }
-    } else {
-      pendingEvt = "T,M,T,0,0,1";
-      musicPlaying = !musicPlaying;
-      musicAck = 1; musicAckUntil = millis() + 2500;
+      CompanionMode::startVibration(80, 30);
+      musicDirty = true;
     }
-    CompanionMode::startVibration(80, 30);
-    musicDirty = true;
   }
   static bool lastVolShowing = false;
   bool nowVolShowing = volSliding || (millis() < volActiveUntil);

@@ -360,8 +360,9 @@ void touchPoll() {
 
     if (callOn || pairOn || touchEat || fxOn) dragAbort();
     else dragMove(touchX1 - touchX0, touchY1 - touchY0, now);
-  } else if (touchDown && now - touchLastSeen > 80) {
+  } else if (touchDown && now - touchLastSeen > 120) {
     touchDown = false;
+    unsigned long pressDuration = now - touchHoldAt;
     touchHoldAt = 0;
     calibTriggered = false;
     if (page == 2 && volSliding) {
@@ -378,8 +379,6 @@ void touchPoll() {
       touchVectorToCanvas(vx, vy);
       int dx = (int)lroundf(vx);
       int dy = (int)lroundf(vy);
-      unsigned long pressDuration = now - touchHoldAt;
-
       // 1. 明确的左右横向手势切歌 (位移 >= 45 像素，且水平明显大于垂直)
       if (abs(dx) >= 45 && abs(dx) >= (int)(abs(dy) * 1.2f)) {
         if (dx < 0) {
@@ -416,9 +415,13 @@ void touchPoll() {
           musicDirty = true;
         } else {
           // 封面中心主体：双击 vs 单击判定播放/暂停
-          if (now - lastCoverTapAt <= 320) {
+          static unsigned long lastCoverPlayTriggerAt = 0;
+          if (now - lastCoverPlayTriggerAt < 500) {
+            // 防抖
+          } else if (lastCoverTapAt > 0 && now - lastCoverTapAt <= 320) {
             coverPendingSingleTap = false;
             lastCoverTapAt = 0;
+            lastCoverPlayTriggerAt = now;
             musicLiked = !musicLiked;
             pendingEvt = String("T,M,L,") + (musicLiked ? "1" : "0");
             musicAck = 1; musicAckUntil = now + 2500;

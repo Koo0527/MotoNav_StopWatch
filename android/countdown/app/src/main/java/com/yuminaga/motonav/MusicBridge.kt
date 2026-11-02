@@ -22,6 +22,8 @@ object MusicBridge {
     @Volatile var info = "等待圆屏音乐操作"
     private var operation = 0
     private var coverRetrySeq = 0
+    private var lastToggleTime = 0L
+    private var lastTrackSkipTime = 0L
     private val callback = object : MediaController.Callback() {
         override fun onMetadataChanged(metadata: MediaMetadata?) { publish() }
         override fun onPlaybackStateChanged(state: PlaybackState?) { publish() }
@@ -234,6 +236,20 @@ object MusicBridge {
                 return@post
             }
             if (action !in listOf("P", "N", "T")) return@post
+            val nowMs = SystemClock.uptimeMillis()
+            if (action == "T") {
+                if (nowMs - lastToggleTime < 600L) {
+                    info = "忽略快速重复播放/暂停指令"
+                    return@post
+                }
+                lastToggleTime = nowMs
+            } else if (action in listOf("P", "N")) {
+                if (nowMs - lastTrackSkipTime < 500L) {
+                    info = "忽略快速重复切歌指令"
+                    return@post
+                }
+                lastTrackSkipTime = nowMs
+            }
             val mc = current
             if (mc == null) { info = "收到 $action，但没有可控制的播放器"; BleLink.sendEvent("#ZACK,5"); return@post }
             val beforeTrack = track(mc)

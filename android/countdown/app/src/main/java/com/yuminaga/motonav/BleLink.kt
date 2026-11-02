@@ -509,8 +509,10 @@ object BleLink {
 
         @Deprecated("Android 13 以下用这个")
         override fun onCharacteristicChanged(g: BluetoothGatt, c: BluetoothGattCharacteristic) {
-            @Suppress("DEPRECATION") val value = c.value?.copyOf()
-            if (c.uuid == TX_UUID) onCurrent(g) { onNotify(value) }
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                @Suppress("DEPRECATION") val value = c.value?.copyOf()
+                if (c.uuid == TX_UUID) onCurrent(g) { onNotify(value) }
+            }
         }
         override fun onCharacteristicChanged(g: BluetoothGatt, c: BluetoothGattCharacteristic, value: ByteArray) {
             val copy = value.copyOf()
