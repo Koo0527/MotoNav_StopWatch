@@ -203,21 +203,31 @@ object MusicBridge {
                 info = "切换循环模式为 $modeDesc · ${mc.packageName}"
                 BleLink.sendEvent("#ZACK,2")
                 try {
-                    val repeatMode = when (targetMode) {
-                        1 -> PlaybackState.REPEAT_MODE_ONE
-                        else -> PlaybackState.REPEAT_MODE_ALL
+                    val tc = mc.transportControls
+                    val repeatVal = if (targetMode == 1) 1 else 2 // 1: ONE, 2: ALL
+                    try {
+                        val mSetRepeat = tc.javaClass.getMethod("setRepeatMode", Int::class.javaPrimitiveType)
+                        mSetRepeat.invoke(tc, repeatVal)
+                    } catch (_: Exception) {}
+                    try {
+                        val shuffleVal = if (targetMode == 2) 1 else 0 // 1: ALL, 0: NONE
+                        val mSetShuffle = tc.javaClass.getMethod("setShuffleMode", Int::class.javaPrimitiveType)
+                        mSetShuffle.invoke(tc, shuffleVal)
+                    } catch (_: Exception) {}
+                    val customRepeatActions = listOf("cycleRepeatMode", "repeat", "shuffle", "toggle_repeat", "toggle_shuffle")
+                    for (ca in customRepeatActions) {
+                        try { tc.sendCustomAction(ca, null) } catch (_: Exception) {}
                     }
-                    mc.transportControls.setRepeatMode(repeatMode)
-                    if (targetMode == 2) {
-                        mc.transportControls.setShuffleMode(PlaybackState.SHUFFLE_MODE_ALL)
-                    } else {
-                        mc.transportControls.setShuffleMode(PlaybackState.SHUFFLE_MODE_NONE)
+                    mc.playbackState?.customActions?.forEach { act ->
+                        val a = act.action.lowercase()
+                        val n = act.name?.toString()?.lowercase() ?: ""
+                        if (a.contains("repeat") || a.contains("shuffle") || a.contains("loop") ||
+                            n.contains("循环") || n.contains("随机")) {
+                            try { tc.sendCustomAction(act.action, act.extras) } catch (_: Exception) {}
+                        }
                     }
                     BleLink.sendEvent("#ZACK,3")
                 } catch (e: Exception) {
-                    try {
-                        mc.transportControls.sendCustomAction("cycleRepeatMode", null)
-                    } catch (_: Exception) {}
                     BleLink.sendEvent("#ZACK,4")
                 }
                 refresh(true)
