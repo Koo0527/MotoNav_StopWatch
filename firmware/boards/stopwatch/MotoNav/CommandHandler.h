@@ -78,6 +78,21 @@ void handleText(const String &m) {
     }
     return;
   }
+  if (m.startsWith("#MV,")) {
+    musicVolume = constrain(m.substring(4).toInt(), 0, 100);
+    musicDirty = true;
+    return;
+  }
+  if (m.startsWith("#MLK,")) {
+    musicLiked = (m.charAt(5) == '1');
+    musicDirty = true;
+    return;
+  }
+  if (m.startsWith("#MRP,")) {
+    musicRepeatMode = constrain(m.substring(5).toInt(), 0, 2);
+    musicDirty = true;
+    return;
+  }
   if (m == "P") {
     // 手机发送心跳，说明链路已就绪。若已通过验证，确保向手机确认 U,1（解决手机端订阅较慢错过初始广播的问题）
     if (bleAuthed && txChar && (authNotifies < 10 || millis() - lastAuthNotifyAt > 3000)) {

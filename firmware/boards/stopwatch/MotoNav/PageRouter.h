@@ -243,42 +243,34 @@ void dragAbort() {
   if (page == 2) musicDirty = true; else if (page == 1) wxDirty = true; else if (page == 3) leanDirty = true; else if (inNav) navDirty = true;
 }
 
-// 将触摸点换算到画布坐标，按钮使用较大的点按范围。
+// 将触摸点换算到画布坐标，按钮使用较大的点按范围 (0:上一曲, 1:播放暂停, 2:下一曲, 3:循环模式, 4:Like红心)
 int musicButtonAt(int x, int y) {
   float dx = x - CX, dy = y - CX;
   touchVectorToCanvas(dx, dy);
   x = lroundf(CX + dx); y = lroundf(CX + dy);
-  for (int i = 0; i < 3; i++) {
-    int bx = CX + (i - 1) * 96;
-    if ((x - bx) * (x - bx) + (y - 345) * (y - 345) <= 46 * 46) return i;
-  }
+  // 循环模式按键 (CX, 382, 半径 28)
+  int bdx = x - CX, bdy = y - 382;
+  if (bdx * bdx + bdy * bdy <= 30 * 30) return 3;
   return -1;
 }
 
 void musicTap(int x, int y) {
   if (dragging || page != 2 || callOn || pairOn || !bleConnected || !bleAuthed) return;
   int button = musicButtonAt(x, y);
-  if (hidMusicMode) {
-    if (button < 0) return;
-    bool hidReady = hidMediaReady();
-    if (!hidReady && !appleMedia.controlReady(button)) { musicAck = 7; musicAckUntil = millis() + 2500; musicDirty = true; return; }
-    if (hidTapAt && millis() - hidTapAt < 120) return;
-    hidTapAt = millis();
-    if (!hidReady) {
-      musicAck = appleMedia.control(button) ? 11 : 10; musicAckUntil = millis() + 2500; musicDirty = true; return;
+  if (button == 3) {
+    // 循环模式切换 (0: 列表循环 -> 1: 单曲循环 -> 2: 随机播放)
+    musicRepeatMode = (musicRepeatMode + 1) % 3;
+    musicDirty = true;
+    if (hidMusicMode) {
+      appleMedia.control(7); // AdvanceRepeatMode
+    } else {
+      pendingEvt = String("T,M,R,") + musicRepeatMode;
     }
-    if (!hidPulses.enqueue(button)) { musicAck = 8; musicAckUntil = millis() + 2500; musicDirty = true; }
-    return; // no T,M,P/T/N: do not also control Apple Music through the App
-  }
-  if (button < 0 || !musicHave) {
-    pendingEvt = String("T,M,H,") + x + "," + y + "," + button;
+    musicAck = 1; musicAckUntil = millis() + 2500;
     return;
   }
-  pendingEvt = String("T,M,") + (button == 0 ? "P" : button == 1 ? "T" : "N") + "," + x + "," + y + "," + button;
-  musicAck = 1; musicAckUntil = millis() + 2500; musicDirty = true;
 }
 
-// 自动换页（导航中看天气超时 / 快到路口）：整段动画
 void showPageAnimated(int target, int sx, int sy) {
   if (page == target) return;
   dragHoriz = sx != 0 || sy == 0;
@@ -305,6 +297,28 @@ void musicTick() {
   static unsigned long lastMusicSecTick = 0;
   if (musicPlaying && musicDuration > 0 && millis() - lastMusicSecTick >= 1000) {
     lastMusicSecTick = millis();
+    musicDirty = true;
+  }
+    if (coverPendingSingleTap && (long)(millis() - lastCoverTapAt) > 320) {
+    coverPendingSingleTap = false;
+    if (hidMusicMode) {
+      if (!hidMediaReady() && !appleMedia.controlReady(1)) {
+        musicAck = 7; musicAckUntil = millis() + 2500;
+      } else {
+        appleMedia.control(1);
+      }
+    } else {
+      pendingEvt = "T,M,T,0,0,1";
+      musicPlaying = !musicPlaying;
+      musicAck = 1; musicAckUntil = millis() + 2500;
+    }
+    CompanionMode::startVibration(80, 30);
+    musicDirty = true;
+  }
+  static bool lastVolShowing = false;
+  bool nowVolShowing = volSliding || (millis() < volActiveUntil);
+  if (lastVolShowing != nowVolShowing) {
+    lastVolShowing = nowVolShowing;
     musicDirty = true;
   }
   if (musicDirty) { musicDirty = false; drawMusic(); }

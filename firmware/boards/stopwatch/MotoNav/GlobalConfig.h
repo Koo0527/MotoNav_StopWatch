@@ -118,6 +118,14 @@ unsigned long musicAckUntil = 0;
 uint32_t musicDuration = 0;
 uint32_t musicPos = 0;
 uint32_t musicPosAt = 0;
+bool musicLiked = false;
+uint8_t musicRepeatMode = 0;                  // 0: 列表循环, 1: 单曲循环, 2: 随机播放
+int8_t musicVolume = 50;                      // 音量百分比 0~100
+bool volSliding = false;                      // 九点钟贴边滑动调音量状态
+uint32_t volActiveUntil = 0;                  // 音量条激活显示截止时间
+bool coverTouchActive = false;                // 是否在专辑封面上操作
+uint32_t lastCoverTapAt = 0;                  // 上次封面点击时间 (双击判定)
+bool coverPendingSingleTap = false;           // 单击等待延迟判定                      // 九点钟贴边滑动调音量状态
 // HID adds a second GATT service to the existing authenticated navigation connection.
 bool hidMusicMode = false;                  // persisted by #HM,0/1; Android explicitly selects 0
 BLEHIDDevice *mediaHid = nullptr;

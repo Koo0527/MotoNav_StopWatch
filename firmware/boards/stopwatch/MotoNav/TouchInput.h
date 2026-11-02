@@ -215,7 +215,37 @@ void touchPoll() {
       touchHoldAt = now;
       touchX0 = touchX1 = x[0]; touchY0 = touchY1 = y[0];
       pendingEvt = "T,P," + String(x[0]) + "," + String(y[0]);
-      if (page == 2 && !callOn && !pairOn) { musicPressed = musicButtonAt(x[0], y[0]); musicDirty = true; }
+      if (page == 2 && !callOn && !pairOn) {
+        float tdx = x[0] - CX, tdy = y[0] - CX;
+        touchVectorToCanvas(tdx, tdy);
+        int cx0 = (int)lroundf(CX + tdx);
+        int cy0 = (int)lroundf(CX + tdy);
+        // 1. 左下方贴边 VOLUME 与音量轨区域 (X <= 140, Y >= 260)
+        float distSq = (float)(cx0 - CX) * (cx0 - CX) + (float)(cy0 - CX) * (cy0 - CX);
+        if (cx0 <= 140 && cy0 >= 260 && distSq >= 160.0f * 160.0f) {
+          volSliding = true;
+          volActiveUntil = now + 2000;
+          touchEat = true;
+          float a = atan2f((float)(cx0 - CX), (float)(CX - cy0));
+          if (a < 0) a += 2.0f * (float)M_PI;
+          float p = a / (2.0f * (float)M_PI);
+          int newVol = constrain(lroundf((p - 0.575f) / (0.725f - 0.575f) * 100.0f), 0, 100);
+          if (newVol != musicVolume) {
+            musicVolume = newVol;
+            musicDirty = true;
+          }
+        }
+        // 2. 专辑封面区域 (X: 133~333, Y: 46~246)
+        else if (cx0 >= 133 && cx0 <= 333 && cy0 >= 46 && cy0 <= 246) {
+          coverTouchActive = true;
+          touchEat = true; // 拦截整页切换滑动
+        }
+        // 3. 循环模式按键 (CX, 382, 半径 25)
+        else if (abs(cx0 - CX) <= 30 && abs(cy0 - 382) <= 30) {
+          touchEat = true;
+        }
+        // 4. 封面之外其它区域：不设 touchEat，正常允许 dragMove 整页拖拽换页！
+      }
       if (fxOn && !callOn) {
         stopArriveFx();
         CompanionMode::startVibration(140, 50); // 触屏轻触退出也给予震动反馈
@@ -224,6 +254,22 @@ void touchPoll() {
     }
     touchX1 = x[0]; touchY1 = y[0];
     touchLastSeen = now;
+
+    if (page == 2 && volSliding) {
+      float tdx = touchX1 - CX, tdy = touchY1 - CX;
+      touchVectorToCanvas(tdx, tdy);
+      int cx1 = (int)lroundf(CX + tdx);
+      int cy1 = (int)lroundf(CX + tdy);
+      float a = atan2f((float)(cx1 - CX), (float)(CX - cy1));
+      if (a < 0) a += 2.0f * (float)M_PI;
+      float p = a / (2.0f * (float)M_PI);
+      int newVol = constrain(lroundf((p - 0.575f) / (0.725f - 0.575f) * 100.0f), 0, 100);
+      if (abs(newVol - musicVolume) >= 2) {
+        musicVolume = newVol;
+        volActiveUntil = now + 2000;
+        musicDirty = true;
+      }
+    }
 
     // 倾角仪表页面：校准按钮长按 1.5 秒判定，彻底杜绝骑行轻碰误触
     if (page == 3 && touchDown) {
@@ -249,6 +295,63 @@ void touchPoll() {
     touchDown = false;
     touchHoldAt = 0;
     calibTriggered = false;
+    if (page == 2 && volSliding) {
+      volSliding = false;
+      volActiveUntil = now + 1500;
+      touchEat = true;
+      pendingEvt = "T,M,V," + String(musicVolume);
+      musicDirty = true;
+    }
+    if (page == 2 && coverTouchActive) {
+      coverTouchActive = false;
+      touchEat = true;
+      int dx = touchX1 - touchX0;
+      int dy = touchY1 - touchY0;
+      if (dx < -35 && abs(dx) > abs(dy)) {
+        // 向左滑动封面 -> 下一曲
+        pendingEvt = "T,M,N,0,0,2";
+        musicAck = 1; musicAckUntil = now + 2500;
+        CompanionMode::startVibration(100, 35);
+        musicDirty = true;
+      } else if (dx > 35 && abs(dx) > abs(dy)) {
+        // 向右滑动封面 -> 上一曲
+        pendingEvt = "T,M,P,0,0,0";
+        musicAck = 1; musicAckUntil = now + 2500;
+        CompanionMode::startVibration(100, 35);
+        musicDirty = true;
+      } else if (abs(dx) < 25 && abs(dy) < 25) {
+        // 原地轻触
+        float tdx = touchX0 - CX, tdy = touchY0 - CX;
+        touchVectorToCanvas(tdx, tdy);
+        int cx0 = (int)lroundf(CX + tdx);
+        int cy0 = (int)lroundf(CX + tdy);
+        int ldx = cx0 - 301, ldy = cy0 - 214;
+        if (ldx * ldx + ldy * ldy <= 24 * 24) {
+          // 直接点击右下角 Like
+          musicLiked = !musicLiked;
+          pendingEvt = String("T,M,L,") + (musicLiked ? "1" : "0");
+          musicAck = 1; musicAckUntil = now + 2500;
+          CompanionMode::startVibration(120, 40);
+          musicDirty = true;
+        } else {
+          // 封面主体：双击 vs 单击判定
+          if (now - lastCoverTapAt <= 320) {
+            // 双击封面：切换 Like / Dislike
+            coverPendingSingleTap = false;
+            lastCoverTapAt = 0;
+            musicLiked = !musicLiked;
+            pendingEvt = String("T,M,L,") + (musicLiked ? "1" : "0");
+            musicAck = 1; musicAckUntil = now + 2500;
+            CompanionMode::startVibration(150, 45);
+            musicDirty = true;
+          } else {
+            // 单击等待延迟判定播放/暂停
+            coverPendingSingleTap = true;
+            lastCoverTapAt = now;
+          }
+        }
+      }
+    }
     if (callOn || pairOn || touchEat || fxOn) dragAbort();
     else {
       if (page == 2 && abs(touchX1 - touchX0) < 36 && abs(touchY1 - touchY0) < 36) musicTap(touchX0, touchY0);

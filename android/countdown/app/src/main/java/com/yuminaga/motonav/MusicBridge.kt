@@ -130,6 +130,63 @@ object MusicBridge {
             if (action == "H") { info = "触摸未命中按钮：$touchInfo"; return@post }
             refresh(action == "Q")
             if (action == "Q") return@post
+            if (action == "V") {
+                val vol = touchInfo.toIntOrNull() ?: return@post
+                val am = ctx?.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager
+                if (am != null) {
+                    val max = am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+                    val target = ((vol.coerceIn(0, 100) * max) / 100f).toInt()
+                    am.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, target, android.media.AudioManager.FLAG_SHOW_UI)
+                    info = "已同步音量：${vol}% (阶数 $target/$max)"
+                }
+                return@post
+            }
+            if (action == "L") {
+                val mc = current
+                if (mc == null) { info = "收到喜欢/收藏操作，但没有可控制的播放器"; BleLink.sendEvent("#ZACK,5"); return@post }
+                val liked = touchInfo == "1"
+                info = "收到喜欢/收藏操作：${if (liked) "点赞" else "取消点赞"} · ${mc.packageName}"
+                BleLink.sendEvent("#ZACK,2")
+                try {
+                    mc.transportControls.setRating(android.media.Rating.newHeartRating(liked))
+                    mc.transportControls.sendCustomAction(if (liked) "like" else "unlike", null)
+                    mc.transportControls.sendCustomAction(if (liked) "favorite" else "unfavorite", null)
+                    mc.transportControls.sendCustomAction("TOGGLE_LIKE", null)
+                    BleLink.sendEvent("#ZACK,3")
+                } catch (e: Exception) {
+                    BleLink.sendEvent("#ZACK,4")
+                }
+                refresh(true)
+                return@post
+            }
+            if (action == "R") {
+                val mc = current
+                if (mc == null) { info = "收到循环模式切换，但没有可控制的播放器"; BleLink.sendEvent("#ZACK,5"); return@post }
+                val targetMode = touchInfo.toIntOrNull() ?: 0
+                val modeDesc = when (targetMode) { 1 -> "单曲循环"; 2 -> "随机播放"; else -> "列表循环" }
+                info = "切换循环模式为 $modeDesc · ${mc.packageName}"
+                BleLink.sendEvent("#ZACK,2")
+                try {
+                    val repeatMode = when (targetMode) {
+                        1 -> PlaybackState.REPEAT_MODE_ONE
+                        else -> PlaybackState.REPEAT_MODE_ALL
+                    }
+                    mc.transportControls.setRepeatMode(repeatMode)
+                    if (targetMode == 2) {
+                        mc.transportControls.setShuffleMode(PlaybackState.SHUFFLE_MODE_ALL)
+                    } else {
+                        mc.transportControls.setShuffleMode(PlaybackState.SHUFFLE_MODE_NONE)
+                    }
+                    BleLink.sendEvent("#ZACK,3")
+                } catch (e: Exception) {
+                    try {
+                        mc.transportControls.sendCustomAction("cycleRepeatMode", null)
+                    } catch (_: Exception) {}
+                    BleLink.sendEvent("#ZACK,4")
+                }
+                refresh(true)
+                return@post
+            }
             if (action !in listOf("P", "N", "T")) return@post
             val mc = current
             if (mc == null) { info = "收到 $action，但没有可控制的播放器"; BleLink.sendEvent("#ZACK,5"); return@post }
