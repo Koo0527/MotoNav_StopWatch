@@ -42,29 +42,73 @@ void touchInit() {
   if (touchOK) attachInterrupt(TP_INT, onTouchIrq, FALLING);   // v5.3
 }
 
-// StopWatch：用户按键换页（与触摸手势等价）
-//   面对屏幕看：左侧是 A 键，右侧是 B 键
-//   主页单按：A 键(左) → 音乐页(page 2，从左滑入)，B 键(右) → 天气页(page 1，从右滑入)
-//   天气/音乐页单按：任意键 → 回主页（按进来方向的反向滑回，和手势一致）
-//   同时按住 AB 键：
-//     - 若不在倾角/G值表：切换到倾角/G值表(page 3，从下方滑入)
-//     - 若在倾角/G值表：返回主界面(向下滑回主界面)
+// 执行上一曲 (在任意界面通用)
+static void triggerKeyPrevTrack() {
+  if (page == 2) {
+    coverFlySpeed = +32;
+    musicDirty = true;
+  } else {
+    if (hidMusicMode) {
+      if (!hidMediaReady() && !appleMedia.controlReady(0)) {
+        musicAck = 7; musicAckUntil = millis() + 2500;
+      } else {
+        appleMedia.control(0);
+      }
+    } else {
+      pendingEvt = "T,M,P,0,0,0";
+      musicAck = 1; musicAckUntil = millis() + 2500;
+    }
+  }
+  CompanionMode::startVibration(120, 45);
+}
+
+// 执行下一曲 (在任意界面通用)
+static void triggerKeyNextTrack() {
+  if (page == 2) {
+    coverFlySpeed = -32;
+    musicDirty = true;
+  } else {
+    if (hidMusicMode) {
+      if (!hidMediaReady() && !appleMedia.controlReady(2)) {
+        musicAck = 7; musicAckUntil = millis() + 2500;
+      } else {
+        appleMedia.control(2);
+      }
+    } else {
+      pendingEvt = "T,M,N,0,0,2";
+      musicAck = 1; musicAckUntil = millis() + 2500;
+    }
+  }
+  CompanionMode::startVibration(120, 45);
+}
+
+// StopWatch 实体按键交互：
+//   面对屏幕看：左侧 KEY A (GPIO 2 / G2)，右侧 KEY B (GPIO 1 / G1)
+//   - 长按 KEY A (>= 500ms)：任意界面上一首 (带震动反馈)
+//   - 长按 KEY B (>= 500ms)：任意界面下一首 (带震动反馈)
+//   - 同时按住 AB 键：切换倾角/G值表 <-> 主界面 (伴侣模式下长按800ms退回主页)
+//   - 单按 KEY A / B (松手确认，防长按冲突)：
+//       - 伴侣模式：浏览上一个 / 下一个表情
+//       - 主页：A 切音乐页(左滑入)，B 切天气页(右滑入)
+//       - 其它页：退回主页
 void buttonTick() {
   static bool lastA = true, lastB = true;
-  static int pendingKey = 0;             // 1=A 等待确认, 2=B 等待确认
-  static unsigned long pendingAt = 0;    // 开始等待的时间戳
-  static bool comboActive = false;       // 组合键已触发锁
-  static unsigned long lastActionAt = 0; // 上次动作时间（防误触连按）
+  static unsigned long aDownAt = 0, bDownAt = 0;
+  static bool aHoldFired = false, bHoldFired = false;
+  static bool comboActive = false;
+  static unsigned long lastActionAt = 0;
+  static unsigned long abBothDownAt = 0;
+  static bool abHoldTriggered = false;
 
   bool a = digitalRead(BTN_A);
   bool b = digitalRead(BTN_B);
   unsigned long now = millis();
 
-  // 到达目的地结算界面下：按任意实体键（A键或B键）立即退出结算返回主页
+  // 1. 到达目的地结算界面：按任意实体键立即退出结算返回主页
   if (fxOn) {
     if ((!a && lastA) || (!b && lastB)) {
       stopArriveFx();
-      CompanionMode::startVibration(140, 50); // 触感震动反馈
+      CompanionMode::startVibration(140, 50);
       lastA = a; lastB = b;
       return;
     }
@@ -72,104 +116,122 @@ void buttonTick() {
     return;
   }
 
-  // 伴侣模式专用按键逻辑：长按 AB 键返回主界面，单按 A/B 浏览表情
-  if (page == 4) {
-    static unsigned long abBothDownAt = 0;
-    static bool abHoldTriggered = false;
-    if (!a && !b) {
+  // 2. 双键同时按下检测（优先级最高）
+  if (!a && !b) {
+    // 抑制单键短按与单键长按切歌
+    aHoldFired = true;
+    bHoldFired = true;
+    aDownAt = 0;
+    bDownAt = 0;
+
+    // 伴侣模式专用：双键长按 800ms 返回主页
+    if (page == 4) {
       if (abBothDownAt == 0) abBothDownAt = now;
       if (!abHoldTriggered && now - abBothDownAt >= 800) {
         abHoldTriggered = true;
         CompanionMode::startVibration(180, 70);
-        showPageAnimated(0, 0, 1); // 向下滑回主界面
+        showPageAnimated(0, 0, 1);
       }
       lastA = a; lastB = b;
       return;
-    } else {
-      abBothDownAt = 0;
-      if (a && b) abHoldTriggered = false;
     }
-    if (abHoldTriggered) {
-      lastA = a; lastB = b;
-      return;
-    }
-    // 单按 A/B 键切换表情
-    if (!a && lastA) {
-      CompanionMode::noteInteraction();
-      CompanionMode::avatar.previous(now);
-      CompanionMode::startVibration(125, 35);
-    } else if (!b && lastB) {
-      CompanionMode::noteInteraction();
-      CompanionMode::avatar.next(now);
-      CompanionMode::startVibration(125, 35);
+
+    // 非伴侣模式：双键切换倾角/G值表 <-> 主页
+    if (!comboActive && (now - lastActionAt > 350)) {
+      comboActive = true;
+      lastActionAt = now;
+      if (!sliding && !callOn && !pairOn && !fxOn) {
+        if (page != 3) {
+          showPageAnimated(3, 0, -1);
+        } else {
+          showPageAnimated(0, 0, 1);
+        }
+      }
     }
     lastA = a; lastB = b;
     return;
+  } else {
+    abBothDownAt = 0;
+    if (a && b) abHoldTriggered = false;
   }
 
-  // 当两个按键都释放时，解除组合键锁定
+  // 双键均释放时解除双键锁
   if (a && b) {
     comboActive = false;
   }
 
-  // 1. 同时按住 AB 键检测（优先级最高）
-  if (!a && !b) {
-    pendingKey = 0; // 取消单键等待
-    if (!comboActive && (now - lastActionAt > 350)) {
-      comboActive = true;
-      lastActionAt = now;
-      lastA = a; lastB = b;
-
-      if (sliding || callOn || pairOn || fxOn) return;
-
-      // 同时按住 AB 键：切换倾角/G值表 <-> 主界面
-      if (page != 3) {
-        showPageAnimated(3, 0, -1); // 从下方滑入倾角/G值表
-      } else {
-        showPageAnimated(0, 0, 1);  // 向下滑回主界面
-      }
-      return;
-    }
-    lastA = a; lastB = b;
-    return;
-  }
-
-  // 若刚刚触发过组合键，且按键尚未完全松开，避免误触发单键
+  // 若双键尚未完全释放，避免残留单键动作
   if (comboActive) {
     lastA = a; lastB = b;
     return;
   }
 
-  // 2. 检测单键刚按下：给予 65ms 判定窗口，确认用户是否意在同时按住 AB 键
-  if (!a && lastA && pendingKey == 0) {
-    pendingKey = 1;
-    pendingAt = now;
-  } else if (!b && lastB && pendingKey == 0) {
-    pendingKey = 2;
-    pendingAt = now;
-  }
-
-  // 3. 单键判定超时或按键抬起确认
-  if (pendingKey > 0) {
-    if (now - pendingAt >= 65 || (pendingKey == 1 && a) || (pendingKey == 2 && b)) {
-      int key = pendingKey;
-      pendingKey = 0;
-      if (now - lastActionAt > 250) {
-        lastActionAt = now;
-        if (!sliding && !callOn && !pairOn && !fxOn) {
-          if (page == 0) {
-            // 主页：A 键切音乐(从左滑入)，B 键切天气(从右滑入)
-            showPageAnimated(key == 1 ? 2 : 1, key == 1 ? 1 : -1, 0);
-          } else if (page == 3) {
-            // 倾角仪表页：单按也可退回主页(向下退出)
-            showPageAnimated(0, 0, 1);
-          } else {
-            // 音乐或天气页：单按退回主页
-            showPageAnimated(0, page == 2 ? -1 : 1, 0);
-          }
+  // 3. KEY A 状态机 (长按 500ms 上一首，短按松开换页)
+  if (!a) {
+    if (lastA) {
+      // 刚按下
+      aDownAt = now;
+      aHoldFired = false;
+    } else if (aDownAt > 0 && !aHoldFired && (now - aDownAt >= 500)) {
+      // 持续按住满 500ms：触发上一首！
+      aHoldFired = true;
+      triggerKeyPrevTrack();
+    }
+  } else if (!lastA) {
+    // 刚松开
+    if (!aHoldFired && aDownAt > 0 && (now - aDownAt < 500) && (now - lastActionAt > 200)) {
+      // 短按松手确认：执行原本单按 A 动作
+      lastActionAt = now;
+      if (page == 4) {
+        CompanionMode::noteInteraction();
+        CompanionMode::avatar.previous(now);
+        CompanionMode::startVibration(125, 35);
+      } else if (!sliding && !callOn && !pairOn && !fxOn) {
+        if (page == 0) {
+          showPageAnimated(2, 1, 0); // 主页 -> 音乐页 (从左滑入)
+        } else if (page == 3) {
+          showPageAnimated(0, 0, 1); // 倾角页 -> 主页
+        } else {
+          showPageAnimated(0, page == 2 ? -1 : 1, 0); // 音乐/天气页 -> 主页
         }
       }
     }
+    aDownAt = 0;
+    aHoldFired = false;
+  }
+
+  // 4. KEY B 状态机 (长按 500ms 下一首，短按松开换页)
+  if (!b) {
+    if (lastB) {
+      // 刚按下
+      bDownAt = now;
+      bHoldFired = false;
+    } else if (bDownAt > 0 && !bHoldFired && (now - bDownAt >= 500)) {
+      // 持续按住满 500ms：触发下一首！
+      bHoldFired = true;
+      triggerKeyNextTrack();
+    }
+  } else if (!lastB) {
+    // 刚松开
+    if (!bHoldFired && bDownAt > 0 && (now - bDownAt < 500) && (now - lastActionAt > 200)) {
+      // 短按松手确认：执行原本单按 B 动作
+      lastActionAt = now;
+      if (page == 4) {
+        CompanionMode::noteInteraction();
+        CompanionMode::avatar.next(now);
+        CompanionMode::startVibration(125, 35);
+      } else if (!sliding && !callOn && !pairOn && !fxOn) {
+        if (page == 0) {
+          showPageAnimated(1, -1, 0); // 主页 -> 天气页 (从右滑入)
+        } else if (page == 3) {
+          showPageAnimated(0, 0, 1);  // 倾角页 -> 主页
+        } else {
+          showPageAnimated(0, page == 2 ? -1 : 1, 0);  // 音乐/天气页 -> 主页
+        }
+      }
+    }
+    bDownAt = 0;
+    bHoldFired = false;
   }
 
   lastA = a;
