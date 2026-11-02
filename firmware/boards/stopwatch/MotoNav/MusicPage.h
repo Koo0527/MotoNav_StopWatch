@@ -94,6 +94,59 @@ static inline void drawHeartIcon(int cx, int cy, uint16_t color, bool filled) {
   }
 }
 
+// 绘制半透明圆盘底座 (与底层封面图像做 alpha 混合，呈现毛玻璃半透明质感)
+static void drawTranslucentCircle(int cx, int cy, int r, uint16_t tintColor = 0x0000, uint8_t alpha = 136) {
+  uint16_t *fb = gfx->getFramebuffer();
+  if (!fb) return;
+  const int W = LCD_WIDTH;
+  const int H = LCD_HEIGHT;
+  int rSq = r * r;
+  int invA = 256 - alpha;
+
+  uint32_t tintRB = (tintColor & 0xF81F) * alpha;
+  uint32_t tintG  = (tintColor & 0x07E0) * alpha;
+
+  int y0 = max(0, cy - r);
+  int y1 = min(H - 1, cy + r);
+  for (int y = y0; y <= y1; y++) {
+    int dy = y - cy;
+    int maxDx = (int)sqrtf((float)(rSq - dy * dy));
+    int x0 = max(0, cx - maxDx);
+    int x1 = min(W - 1, cx + maxDx);
+    uint16_t *row = &fb[y * W];
+    for (int x = x0; x <= x1; x++) {
+      uint16_t c = row[x];
+      uint32_t rb = (c & 0xF81F) * invA + tintRB;
+      uint32_t g  = (c & 0x07E0) * invA + tintG;
+      row[x] = (uint16_t)(((rb >> 8) & 0xF81F) | ((g >> 8) & 0x07E0));
+    }
+  }
+  gfx->drawCircle(cx, cy, r, (tintColor != 0) ? 0xFACD : 0x5AEB);
+}
+
+// 将 180x180 的 coverBuf 高速等比放大绘制至 dstSize x dstSize (例如 206x206)
+static void drawScaledCover(int dstX, int dstY, int dstSize) {
+  if (!coverBuf) return;
+  uint16_t *fb = gfx->getFramebuffer();
+  if (!fb) return;
+  const int W = LCD_WIDTH;
+  const int H = LCD_HEIGHT;
+  const int srcSize = 180;
+  for (int y = 0; y < dstSize; y++) {
+    int py = dstY + y;
+    if (py < 0 || py >= H) continue;
+    int srcY = (y * srcSize) / dstSize;
+    const uint16_t *srcRow = &coverBuf[srcY * srcSize];
+    uint16_t *dstRow = &fb[py * W];
+    for (int x = 0; x < dstSize; x++) {
+      int px = dstX + x;
+      if (px < 0 || px >= W) continue;
+      int srcX = (x * srcSize) / dstSize;
+      dstRow[px] = srcRow[srcX];
+    }
+  }
+}
+
 // 绘制循环模式图标 (0: 列表循环, 1: 单曲循环, 2: 随机播放)
 static inline void drawRepeatIcon(int cx, int cy, uint8_t mode) {
   uint16_t c = (mode == 1) ? 0xFFE0 : (mode == 2 ? 0x07E0 : C_WHITE);
@@ -216,63 +269,69 @@ void drawMusic() {
   bool showVol = volSliding || (millis() < volActiveUntil);
   drawVolumeArc(musicVolume, showVol);
 
-  // 2. 专辑封面区 (位置下移至 Y: 56 ~ 236，大小 180x180，离线也保留显示)
-  const int covSize = 180;
-  const int covBaseX = CX - covSize / 2; // 143
-  const int covBaseY = 56;
+  // 2. 专辑封面区 (尺寸放大至 206x206，位置下移至 Y: 48 ~ 254，离线保留显示)
+  const int covSize = 206;
+  const int covBaseX = CX - covSize / 2; // 130
+  const int covBaseY = 48;
 
   // 原位置常驻半透明底图矩形边框与唱盘托架（切歌划开封面时自然露出底座）
-  gfx->fillRoundRect(covBaseX - 3, covBaseY - 3, covSize + 6, covSize + 6, 14, 0x18C3);
-  gfx->drawRoundRect(covBaseX - 3, covBaseY - 3, covSize + 6, covSize + 6, 14, 0x4A69);
-  gfx->drawRoundRect(covBaseX - 1, covBaseY - 1, covSize + 2, covSize + 2, 12, 0x2945);
-  // 底座内部同心凹槽（类似留声机托盘）
-  gfx->drawCircle(CX, covBaseY + covSize / 2, 54, 0x2945);
-  gfx->drawCircle(CX, covBaseY + covSize / 2, 24, 0x2945);
+  gfx->fillRoundRect(covBaseX - 3, covBaseY - 3, covSize + 6, covSize + 6, 16, 0x18C3);
+  gfx->drawRoundRect(covBaseX - 3, covBaseY - 3, covSize + 6, covSize + 6, 16, 0x4A69);
+  gfx->drawRoundRect(covBaseX - 1, covBaseY - 1, covSize + 2, covSize + 2, 14, 0x2945);
+  // 底座内部同心凹槽（留声机托盘）
+  gfx->drawCircle(CX, covBaseY + covSize / 2, 60, 0x2945);
+  gfx->drawCircle(CX, covBaseY + covSize / 2, 26, 0x2945);
 
   // 封面实际绘制坐标（随滑动/离开动画水平偏移）
   int drawCovX = covBaseX + coverSlideDx;
 
   if (coverValid && coverBuf != nullptr) {
-    gfx->fillRoundRect(drawCovX - 2, covBaseY - 2, covSize + 4, covSize + 4, 12, 0x2124);
-    gfx->draw16bitRGBBitmap(drawCovX, covBaseY, coverBuf, covSize, covSize);
-    gfx->drawRoundRect(drawCovX - 2, covBaseY - 2, covSize + 4, covSize + 4, 12, 0x5AEB);
+    gfx->fillRoundRect(drawCovX - 2, covBaseY - 2, covSize + 4, covSize + 4, 14, 0x2124);
+    drawScaledCover(drawCovX, covBaseY, covSize);
+    gfx->drawRoundRect(drawCovX - 2, covBaseY - 2, covSize + 4, covSize + 4, 14, 0x5AEB);
   } else {
     // 拟物黑胶唱片
-    const int discR = 86;
+    const int discR = 98;
     const int discX = drawCovX + covSize / 2;
     const int discY = covBaseY + covSize / 2;
     aaDisc(discX, discY, discR, 0x10A2);
-    gfx->drawCircle(discX, discY, 68, 0x2124);
-    gfx->drawCircle(discX, discY, 48, 0x2124);
-    aaDisc(discX, discY, 32, 0x249F);
-    aaDisc(discX, discY, 8, C_BLACK);
-    gfx->drawCircle(discX, discY, 8, 0xDEFB);
+    gfx->drawCircle(discX, discY, 78, 0x2124);
+    gfx->drawCircle(discX, discY, 56, 0x2124);
+    aaDisc(discX, discY, 36, 0x249F);
+    aaDisc(discX, discY, 10, C_BLACK);
+    gfx->drawCircle(discX, discY, 10, 0xDEFB);
   }
 
-  // 3. 嵌入专辑封面的播放/暂停按钮 (暂停时才显示大播放三角，大位移滑动时淡出)
+  // 3. 嵌入专辑封面的播放/暂停按钮 (暂停时才显示大播放三角，半透明毛玻璃底座)
   if (!musicPlaying && abs(coverSlideDx) < 60) {
     int pcx = drawCovX + covSize / 2, pcy = covBaseY + covSize / 2;
-    aaDisc(pcx, pcy, 34, 0x18C3);
-    gfx->fillTriangle(pcx - 10, pcy - 16, pcx - 10, pcy + 16, pcx + 16, pcy, C_WHITE);
+    drawTranslucentCircle(pcx, pcy, 32, 0x0000, 140);
+    gfx->fillTriangle(pcx - 9, pcy - 15, pcx - 9, pcy + 15, pcx + 15, pcy, C_WHITE);
   }
 
-  // 4. 嵌入专辑封面右下角的 Like 按钮 (点击或双击封面触发，温润草莓红，绝不突兀)
-  const int likeX = drawCovX + covSize - 22;
-  const int likeY = covBaseY + covSize - 22;
-  aaDisc(likeX, likeY, 18, musicLiked ? 0x4102 : 0x18C3);
+  // 4. 嵌入专辑封面左下角的循环模式按钮 (半透明底座)
+  const int repX = drawCovX + 28;
+  const int repY = covBaseY + covSize - 28;
+  drawTranslucentCircle(repX, repY, 19, 0x0000, 140);
+  drawRepeatIcon(repX, repY, musicRepeatMode);
+
+  // 5. 嵌入专辑封面右下角的 Like 按钮 (半透明底座，点亮为半透明红宝石光泽)
+  const int likeX = drawCovX + covSize - 28;
+  const int likeY = covBaseY + covSize - 28;
+  drawTranslucentCircle(likeX, likeY, 19, musicLiked ? 0x6000 : 0x0000, 150);
   drawHeartIcon(likeX, likeY, musicLiked ? 0xFACD : 0xCE79, musicLiked);
 
-  // 5. 歌曲进度条与大号时间数字 (位置下移至 Y: 252 ~ 284)
+  // 6. 歌曲进度条与大号时间数字 (下移至 Y: 270 ~ 302，宽度自适应放大)
   if (musicHave && musicDuration > 0) {
     uint32_t curSec = musicPos;
     if (musicPlaying && linked) {
       uint32_t elapsed = (millis() - musicPosAt) / 1000;
       curSec = min(musicDuration, musicPos + elapsed);
     }
-    const int barW = 250;
+    const int barW = 260;
     const int barH = 8;
-    const int barX = CX - barW / 2; // 108
-    const int barY = 252;
+    const int barX = CX - barW / 2; // 103
+    const int barY = 270;
 
     // 进度条背景
     gfx->fillRoundRect(barX, barY, barW, barH, 4, 0x2124);
@@ -295,20 +354,16 @@ void drawMusic() {
     gfx->print(timeTotal);
   }
 
-  // 6. 歌名与歌手 (位置下移至 Y: 302, 336)
+  // 7. 歌名与歌手 (下移至 Y: 322, 356)
   if (hidMusicMode && linked && !appleMedia.available) {
-    printCentered("PHONE MEDIA KEYS", CX, 304, 2, C_WHITE);
-    printCentered("OPEN MUSIC APP ON PHONE", CX, 336, 2, C_GREY);
+    printCentered("PHONE MEDIA KEYS", CX, 324, 2, C_WHITE);
+    printCentered("OPEN MUSIC APP ON PHONE", CX, 356, 2, C_GREY);
   } else if (linked || (musicHave && imgs[5].showW > 0)) {
-    drawTextImg(5, 302, 0xFF);
-    drawTextImg(6, 336, 0xBB);
+    drawTextImg(5, 322, 0xFF);
+    drawTextImg(6, 356, 0xBB);
   } else {
-    printCentered("PHONE OFFLINE", CX, 316, 2, C_GREY);
+    printCentered("PHONE OFFLINE", CX, 336, 2, C_GREY);
   }
-
-  // 7. 循环模式微型按钮 (Y: 382，不遮挡主界面，轻触可换循环模式)
-  aaDisc(CX, 382, 22, 0x19A7);
-  drawRepeatIcon(CX, 382, musicRepeatMode);
 
   // 8. 底部页面指示点
   drawPageDots();

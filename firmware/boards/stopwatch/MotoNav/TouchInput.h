@@ -237,14 +237,10 @@ void touchPoll() {
             musicDirty = true;
           }
         }
-        // 2. 专辑封面区域 (X: 133~333, Y: 46~246)
-        else if (cx0 >= 133 && cx0 <= 333 && cy0 >= 46 && cy0 <= 246) {
+        // 2. 专辑封面区域 (放大至 206x206, X: 120~346, Y: 42~260)
+        else if (cx0 >= 120 && cx0 <= 346 && cy0 >= 42 && cy0 <= 260) {
           coverTouchActive = true;
           touchEat = true; // 拦截整页切换滑动
-        }
-        // 3. 循环模式按键 (CX, 382, 半径 25)
-        else if (abs(cx0 - CX) <= 30 && abs(cy0 - 382) <= 30) {
-          touchEat = true;
         }
         // 4. 封面之外其它区域：不设 touchEat，正常允许 dragMove 整页拖拽换页！
       }
@@ -327,9 +323,19 @@ void touchPoll() {
         touchVectorToCanvas(tdx, tdy);
         int cx0 = (int)lroundf(CX + tdx);
         int cy0 = (int)lroundf(CX + tdy);
-        int ldx = cx0 - 301, ldy = cy0 - 214;
-        if (ldx * ldx + ldy * ldy <= 28 * 28) {
-          // 点击右下角 Like
+
+        int rdx = cx0 - 158, rdy = cy0 - 226;
+        int ldx = cx0 - 308, ldy = cy0 - 226;
+
+        if (rdx * rdx + rdy * rdy <= 28 * 28) {
+          // 点击封面左下角：切换循环模式 (0: 列表, 1: 单曲, 2: 随机)
+          musicRepeatMode = (musicRepeatMode + 1) % 3;
+          pendingEvt = String("T,M,R,") + String(musicRepeatMode);
+          musicAck = 1; musicAckUntil = now + 2500;
+          CompanionMode::startVibration(100, 35);
+          musicDirty = true;
+        } else if (ldx * ldx + ldy * ldy <= 28 * 28) {
+          // 点击封面右下角：切换 Like / Dislike
           musicLiked = !musicLiked;
           pendingEvt = String("T,M,L,") + (musicLiked ? "1" : "0");
           musicAck = 1; musicAckUntil = now + 2500;
