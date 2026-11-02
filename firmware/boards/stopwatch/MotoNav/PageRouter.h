@@ -299,7 +299,50 @@ void musicTick() {
     lastMusicSecTick = millis();
     musicDirty = true;
   }
-    if (coverPendingSingleTap && (long)(millis() - lastCoverTapAt) > 320) {
+  // 封面切歌离开动画帧驱动 (每 20ms 一帧，滑动离开屏幕)
+  static unsigned long lastCoverAnimTick = 0;
+  if (coverFlySpeed != 0 && millis() - lastCoverAnimTick >= 20) {
+    lastCoverAnimTick = millis();
+    coverSlideDx += coverFlySpeed;
+    if (coverFlySpeed < 0 && coverSlideDx <= -220) {
+      // 向左离开完成 -> 下一曲
+      coverFlySpeed = 0;
+      coverSlideDx = 0;
+      if (hidMusicMode) {
+        if (!hidMediaReady() && !appleMedia.controlReady(2)) {
+          musicAck = 7; musicAckUntil = millis() + 2500;
+        } else {
+          appleMedia.control(2);
+        }
+      } else {
+        pendingEvt = "T,M,N,0,0,2";
+        musicAck = 1; musicAckUntil = millis() + 2500;
+      }
+      CompanionMode::startVibration(100, 35);
+    } else if (coverFlySpeed > 0 && coverSlideDx >= 220) {
+      // 向右离开完成 -> 上一曲
+      coverFlySpeed = 0;
+      coverSlideDx = 0;
+      if (hidMusicMode) {
+        if (!hidMediaReady() && !appleMedia.controlReady(0)) {
+          musicAck = 7; musicAckUntil = millis() + 2500;
+        } else {
+          appleMedia.control(0);
+        }
+      } else {
+        pendingEvt = "T,M,P,0,0,0";
+        musicAck = 1; musicAckUntil = millis() + 2500;
+      }
+      CompanionMode::startVibration(100, 35);
+    } else if ((coverFlySpeed < 0 && coverSlideDx <= 0) || (coverFlySpeed > 0 && coverSlideDx >= 0)) {
+      // 弹性回弹原位完成
+      coverSlideDx = 0;
+      coverFlySpeed = 0;
+    }
+    musicDirty = true;
+  }
+
+  if (coverPendingSingleTap && (long)(millis() - lastCoverTapAt) > 320) {
     coverPendingSingleTap = false;
     if (hidMusicMode) {
       if (!hidMediaReady() && !appleMedia.controlReady(1)) {

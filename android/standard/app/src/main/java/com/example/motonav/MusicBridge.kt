@@ -148,10 +148,46 @@ object MusicBridge {
                 info = "收到喜欢/收藏操作：${if (liked) "点赞" else "取消点赞"} · ${mc.packageName}"
                 BleLink.sendEvent("#ZACK,2")
                 try {
+                    // 1. 尝试匹配播放器在 PlaybackState 中声明的 CustomAction (网易云/QQ音乐/Spotify等)
+                    mc.playbackState?.customActions?.forEach { act ->
+                        val a = act.action.lowercase()
+                        val n = act.name?.toString()?.lowercase() ?: ""
+                        if (a.contains("like") || a.contains("fav") || a.contains("heart") || a.contains("love") ||
+                            n.contains("like") || n.contains("fav") || n.contains("喜欢") || n.contains("收藏") || n.contains("红心")) {
+                            mc.transportControls.sendCustomAction(act.action, act.extras)
+                            info += " · 动作(${act.name ?: act.action})"
+                        }
+                    }
+                    // 2. 尝试标准系统 Rating
                     mc.transportControls.setRating(android.media.Rating.newHeartRating(liked))
-                    mc.transportControls.sendCustomAction(if (liked) "like" else "unlike", null)
-                    mc.transportControls.sendCustomAction(if (liked) "favorite" else "unfavorite", null)
-                    mc.transportControls.sendCustomAction("TOGGLE_LIKE", null)
+                    mc.transportControls.setRating(android.media.Rating.newThumbRating(liked))
+
+                    // 3. 常见各大播放器内置私有 action
+                    val commonActions = listOf(
+                        "com.netease.cloudmusic.action_like", "action_like", "action_favorite",
+                        "ACTION_FAVORITE", "ACTION_LIKE", "toggle_favorite", "toggle_like", "like", "favorite"
+                    )
+                    for (ca in commonActions) {
+                        try { mc.transportControls.sendCustomAction(ca, null) } catch (_: Exception) {}
+                    }
+                    // 4. 通过 NotificationListenerService 触发通知栏上的“喜欢”动作 (最高保真度)
+                    try {
+                        val sbn = AmapNotifyListener.instance?.activeNotifications?.firstOrNull { it.packageName == mc.packageName }
+                        val notif = sbn?.notification
+                        notif?.actions?.forEach { nAct ->
+                            val t = nAct.title?.toString()?.lowercase() ?: ""
+                            if (t.contains("like") || t.contains("fav") || t.contains("喜欢") || t.contains("收藏") || t.contains("红心")) {
+                                nAct.actionIntent?.send()
+                                info += " · 通知栏动作(${nAct.title})"
+                            }
+                        }
+                    } catch (_: Exception) {}
+                    // 5. 广播兜底 (网易云音乐)
+                    if (mc.packageName == "com.netease.cloudmusic") {
+                        try {
+                            ctx?.sendBroadcast(android.content.Intent("com.netease.cloudmusic.musicpost.like").setPackage("com.netease.cloudmusic"))
+                        } catch (_: Exception) {}
+                    }
                     BleLink.sendEvent("#ZACK,3")
                 } catch (e: Exception) {
                     BleLink.sendEvent("#ZACK,4")

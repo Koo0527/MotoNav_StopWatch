@@ -125,11 +125,21 @@ object AmapProbe {
 
 /** 读高德的通知（系统设置里打开“通知使用权”后自动运行） */
 class AmapNotifyListener : NotificationListenerService() {
+    companion object {
+        @Volatile var instance: AmapNotifyListener? = null
+    }
+
     override fun onListenerConnected() {
+        instance = this
         MusicBridge.init(this)
         MusicBridge.refresh(true)
         AmapProbe.add("系统", "nl", "通知读取已连接")
         try { activeNotifications?.forEach { onNotificationPosted(it) } } catch (_: Exception) {}
+    }
+
+    override fun onDestroy() {
+        if (instance == this) instance = null
+        super.onDestroy()
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {

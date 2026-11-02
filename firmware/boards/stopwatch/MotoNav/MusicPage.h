@@ -11,6 +11,7 @@ extern uint8_t musicRepeatMode;
 extern int8_t musicVolume;
 extern bool volSliding;
 extern uint32_t volActiveUntil;
+extern int coverSlideDx;
 
 static inline void formatMusicTime(uint32_t sec, char *buf, size_t len) {
   uint32_t m = sec / 60;
@@ -46,18 +47,50 @@ static void drawCoverBackgroundDimmed() {
   }
 }
 
-// 绘制 Like 红心图标
+// 15x13 精致心形点阵掩码 (彻底杜绝圆圈交叉杂线，空心剔透、实心饱满)
+static const uint16_t heartFilledMask[13] = {
+  0b0111000000111000, // row 0:  ***     ***
+  0b1111100001111100, // row 1: *****   *****
+  0b1111110011111100, // row 2: ****** ******
+  0b1111111111111100, // row 3: **************
+  0b1111111111111100, // row 4: **************
+  0b0111111111111000, // row 5:  ************
+  0b0111111111111000, // row 6:  ************
+  0b0011111111110000, // row 7:   **********
+  0b0001111111100000, // row 8:    ********
+  0b0000111111000000, // row 9:     ******
+  0b0000011110000000, // row 10:     ****
+  0b0000001100000000, // row 11:      **
+  0b0000000000000000  // row 12
+};
+
+static const uint16_t heartOutlineMask[13] = {
+  0b0111000000111000, // row 0:  ***     ***
+  0b1000100001000100, // row 1: *   *   *   *
+  0b1000010010000100, // row 2: *    * *    *
+  0b1000001010000010, // row 3: *     *     *
+  0b0100000000000100, // row 4:  *         *
+  0b0100000000000100, // row 5:  *         *
+  0b0010000000001000, // row 6:   *       *
+  0b0010000000001000, // row 7:   *       *
+  0b0001000000010000, // row 8:    *     *
+  0b0000100000100000, // row 9:     *   *
+  0b0000010001000000, // row 10:     * *
+  0b0000001110000000, // row 11:      *
+  0b0000000000000000
+};
+
 static inline void drawHeartIcon(int cx, int cy, uint16_t color, bool filled) {
-  if (filled) {
-    gfx->fillCircle(cx - 5, cy - 3, 5, color);
-    gfx->fillCircle(cx + 5, cy - 3, 5, color);
-    gfx->fillTriangle(cx - 10, cy - 1, cx + 10, cy - 1, cx, cy + 9, color);
-    gfx->fillRect(cx - 5, cy - 4, 11, 4, color);
-  } else {
-    gfx->drawCircle(cx - 5, cy - 3, 5, color);
-    gfx->drawCircle(cx + 5, cy - 3, 5, color);
-    gfx->drawLine(cx - 10, cy - 2, cx, cy + 9, color);
-    gfx->drawLine(cx + 10, cy - 2, cx, cy + 9, color);
+  const uint16_t *mask = filled ? heartFilledMask : heartOutlineMask;
+  int startX = cx - 7;
+  int startY = cy - 6;
+  for (int r = 0; r < 13; r++) {
+    uint16_t rowBits = mask[r];
+    for (int c = 0; c < 15; c++) {
+      if ((rowBits >> (15 - c)) & 1) {
+        gfx->drawPixel(startX + c, startY + r, color);
+      }
+    }
   }
 }
 
@@ -97,14 +130,16 @@ static const uint8_t volumeCharBitmaps[6][5] = {
   {0x7F, 0x49, 0x49, 0x49, 0x41}  // E
 };
 
+// VOLUME 字母放到圆屏 9 点钟位置，紧贴屏幕边缘
 static void drawVolumeTextRotated(uint16_t color) {
-  const float R_text = 196.0f;
-  const float p_v = 0.685f; // V 在左上方 (8点半)
-  const float p_e = 0.615f; // E 在右下方 (7点)
+  const float R_text = 211.0f; // 紧贴音量轨内侧，极大贴近圆屏外边缘
+  // 9 点钟方向为 p = 0.75，字母依序在 9 点钟上下沿切线展开
+  const float p_start = 0.785f; // V 在上方 (约 9 点 25 分)
+  const float p_end   = 0.715f; // E 在下方 (约 8 点 35 分)
   const float scale = 1.6f;
 
   for (int i = 0; i < 6; i++) {
-    float p = p_v - i * ((p_v - p_e) / 5.0f);
+    float p = p_start - i * ((p_start - p_end) / 5.0f);
     float a = p * 2.0f * (float)M_PI;
     float cx = CX + R_text * sinf(a);
     float cy = CX - R_text * cosf(a);
@@ -126,45 +161,46 @@ static void drawVolumeTextRotated(uint16_t color) {
   }
 }
 
-// 绘制左下贴合圆屏弧度的无锯齿音量条 (默认仅显示VOLUME，按住VOLUME触发显示)
+// 绘制 9 点钟位置、更贴近屏幕边缘的无锯齿音量条
 static void drawVolumeArc(int vol, bool showActive) {
-  // 1. 始终以优雅的圆弧切线旋转呈现 "VOLUME" (浅灰半透明)
+  // 1. 常驻在 9 点钟贴边切线呈现 "VOLUME" (浅灰半透明)
   drawVolumeTextRotated(showActive ? 0xFFFF : 0xCE79);
 
   if (!showActive) return;
 
-  // 2. 激活状态：采用亚像素抗锯齿圆环 fillRingBand 绘制胶囊圆弧轨 (无锯齿)
-  // 圆周比例范围：底端 7 点钟 (0.575) 到 顶端 8 点 40 分 (0.725)
-  const float p_min = 0.575f;
-  const float p_max = 0.725f;
-  const float r_in = RING_R - 5;  // 217
-  const float r_out = RING_R + 5; // 227
-  const float half_th = 5.0f;
+  // 2. 激活状态：紧贴屏幕外壳边缘 (外径 230，屏幕半径 233)，居中于 9 点钟 (0.75)
+  // 圆周比例：0.68 (8 点 10 分，音量 0%) 到 0.82 (9 点 50 分，音量 100%)
+  const float p_min = 0.68f;
+  const float p_max = 0.82f;
+  const float r_in = 222.0f;
+  const float r_out = 230.0f;
+  const float r_mid = 226.0f;
+  const float half_th = 4.0f;
 
   // 绘制底轨槽 (深灰抗锯齿)
   fillRingBand(p_min, p_max, r_in, r_out, 0x2124);
   float a_min = p_min * 2.0f * (float)M_PI;
-  aaDisc(CX + RING_R * sinf(a_min), CX - RING_R * cosf(a_min), half_th, 0x2124);
+  aaDisc(CX + r_mid * sinf(a_min), CX - r_mid * cosf(a_min), half_th, 0x2124);
   float a_max = p_max * 2.0f * (float)M_PI;
-  aaDisc(CX + RING_R * sinf(a_max), CX - RING_R * cosf(a_max), half_th, 0x2124);
+  aaDisc(CX + r_mid * sinf(a_max), CX - r_mid * cosf(a_max), half_th, 0x2124);
 
-  // 绘制音量填充弧：从底端 (0%) 顺时针向上生长到顶端 (100%)，杜绝上下颠倒
+  // 绘制音量填充弧：从底端 (0%) 顺时针向上生长到顶端 (100%)
   float p_fill = p_min + (p_max - p_min) * (constrain(vol, 0, 100) / 100.0f);
   if (vol > 0) {
     fillRingBand(p_min, p_fill, r_in, r_out, 0x07FF); // 高亮青色
-    aaDisc(CX + RING_R * sinf(a_min), CX - RING_R * cosf(a_min), half_th, 0x07FF);
+    aaDisc(CX + r_mid * sinf(a_min), CX - r_mid * cosf(a_min), half_th, 0x07FF);
     float a_fill = p_fill * 2.0f * (float)M_PI;
-    aaDisc(CX + RING_R * sinf(a_fill), CX - RING_R * cosf(a_fill), half_th, 0x07FF);
+    aaDisc(CX + r_mid * sinf(a_fill), CX - r_mid * cosf(a_fill), half_th, 0x07FF);
     // 滑块高亮小白点
-    aaDisc(CX + RING_R * sinf(a_fill), CX - RING_R * cosf(a_fill), 6.5f, C_WHITE);
+    aaDisc(CX + r_mid * sinf(a_fill), CX - r_mid * cosf(a_fill), 6.0f, C_WHITE);
   }
 
-  // 弧线内侧显示实时百分比大数字
+  // 弧线内侧显示实时百分比大数字 (居中于 9 点钟内侧)
   char vbuf[16];
   snprintf(vbuf, sizeof(vbuf), "%d%%", vol);
   gfx->setTextColor(0x07FF);
   gfx->setTextSize(2);
-  gfx->setCursor(32, CX + 35);
+  gfx->setCursor(34, CX - 8);
   gfx->print(vbuf);
 }
 
@@ -182,37 +218,49 @@ void drawMusic() {
 
   // 2. 专辑封面区 (位置下移至 Y: 56 ~ 236，大小 180x180，离线也保留显示)
   const int covSize = 180;
-  const int covX = CX - covSize / 2; // 143
-  const int covY = 56;
+  const int covBaseX = CX - covSize / 2; // 143
+  const int covBaseY = 56;
+
+  // 原位置常驻半透明底图矩形边框与唱盘托架（切歌划开封面时自然露出底座）
+  gfx->fillRoundRect(covBaseX - 3, covBaseY - 3, covSize + 6, covSize + 6, 14, 0x18C3);
+  gfx->drawRoundRect(covBaseX - 3, covBaseY - 3, covSize + 6, covSize + 6, 14, 0x4A69);
+  gfx->drawRoundRect(covBaseX - 1, covBaseY - 1, covSize + 2, covSize + 2, 12, 0x2945);
+  // 底座内部同心凹槽（类似留声机托盘）
+  gfx->drawCircle(CX, covBaseY + covSize / 2, 54, 0x2945);
+  gfx->drawCircle(CX, covBaseY + covSize / 2, 24, 0x2945);
+
+  // 封面实际绘制坐标（随滑动/离开动画水平偏移）
+  int drawCovX = covBaseX + coverSlideDx;
 
   if (coverValid && coverBuf != nullptr) {
-    gfx->fillRoundRect(covX - 3, covY - 3, covSize + 6, covSize + 6, 14, 0x18C3);
-    gfx->drawRoundRect(covX - 3, covY - 3, covSize + 6, covSize + 6, 14, 0x4A69);
-    gfx->draw16bitRGBBitmap(covX, covY, coverBuf, covSize, covSize);
+    gfx->fillRoundRect(drawCovX - 2, covBaseY - 2, covSize + 4, covSize + 4, 12, 0x2124);
+    gfx->draw16bitRGBBitmap(drawCovX, covBaseY, coverBuf, covSize, covSize);
+    gfx->drawRoundRect(drawCovX - 2, covBaseY - 2, covSize + 4, covSize + 4, 12, 0x5AEB);
   } else {
     // 拟物黑胶唱片
     const int discR = 86;
-    const int discY = covY + covSize / 2;
-    aaDisc(CX, discY, discR, 0x10A2);
-    gfx->drawCircle(CX, discY, 68, 0x2124);
-    gfx->drawCircle(CX, discY, 48, 0x2124);
-    aaDisc(CX, discY, 32, 0x249F);
-    aaDisc(CX, discY, 8, C_BLACK);
-    gfx->drawCircle(CX, discY, 8, 0xDEFB);
+    const int discX = drawCovX + covSize / 2;
+    const int discY = covBaseY + covSize / 2;
+    aaDisc(discX, discY, discR, 0x10A2);
+    gfx->drawCircle(discX, discY, 68, 0x2124);
+    gfx->drawCircle(discX, discY, 48, 0x2124);
+    aaDisc(discX, discY, 32, 0x249F);
+    aaDisc(discX, discY, 8, C_BLACK);
+    gfx->drawCircle(discX, discY, 8, 0xDEFB);
   }
 
-  // 3. 嵌入专辑封面的播放/暂停按钮 (暂停时才显示大播放三角，播放时不显示)
-  if (!musicPlaying) {
-    int pcx = CX, pcy = covY + covSize / 2;
+  // 3. 嵌入专辑封面的播放/暂停按钮 (暂停时才显示大播放三角，大位移滑动时淡出)
+  if (!musicPlaying && abs(coverSlideDx) < 60) {
+    int pcx = drawCovX + covSize / 2, pcy = covBaseY + covSize / 2;
     aaDisc(pcx, pcy, 34, 0x18C3);
     gfx->fillTriangle(pcx - 10, pcy - 16, pcx - 10, pcy + 16, pcx + 16, pcy, C_WHITE);
   }
 
-  // 4. 嵌入专辑封面右下角的 Like 按钮 (点击或双击封面触发)
-  const int likeX = covX + covSize - 22; // 301
-  const int likeY = covY + covSize - 22; // 214
-  aaDisc(likeX, likeY, 18, musicLiked ? 0x4800 : 0x18C3);
-  drawHeartIcon(likeX, likeY, musicLiked ? 0xF800 : 0xCE79, musicLiked);
+  // 4. 嵌入专辑封面右下角的 Like 按钮 (点击或双击封面触发，温润草莓红，绝不突兀)
+  const int likeX = drawCovX + covSize - 22;
+  const int likeY = covBaseY + covSize - 22;
+  aaDisc(likeX, likeY, 18, musicLiked ? 0x4102 : 0x18C3);
+  drawHeartIcon(likeX, likeY, musicLiked ? 0xFACD : 0xCE79, musicLiked);
 
   // 5. 歌曲进度条与大号时间数字 (位置下移至 Y: 252 ~ 284)
   if (musicHave && musicDuration > 0) {

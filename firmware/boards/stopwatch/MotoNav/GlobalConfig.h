@@ -125,7 +125,9 @@ bool volSliding = false;                      // 九点钟贴边滑动调音量�
 uint32_t volActiveUntil = 0;                  // 音量条激活显示截止时间
 bool coverTouchActive = false;                // 是否在专辑封面上操作
 uint32_t lastCoverTapAt = 0;                  // 上次封面点击时间 (双击判定)
-bool coverPendingSingleTap = false;           // 单击等待延迟判定                      // 九点钟贴边滑动调音量状态
+bool coverPendingSingleTap = false;           // 单击等待延迟判定
+int coverSlideDx = 0;                         // 封面水平位移 (拖动与离开动画)
+int coverFlySpeed = 0;                        // 封面飞出动画速度 (+向右, -向左, 0无动画)
 // HID adds a second GATT service to the existing authenticated navigation connection.
 bool hidMusicMode = false;                  // persisted by #HM,0/1; Android explicitly selects 0
 BLEHIDDevice *mediaHid = nullptr;

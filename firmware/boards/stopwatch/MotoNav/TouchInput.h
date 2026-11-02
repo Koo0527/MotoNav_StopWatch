@@ -1,3 +1,5 @@
+extern int coverSlideDx;
+extern int coverFlySpeed;
 #pragma once
 #include <Arduino.h>
 #include "TouchDrvCSTXXX.hpp"
@@ -220,16 +222,16 @@ void touchPoll() {
         touchVectorToCanvas(tdx, tdy);
         int cx0 = (int)lroundf(CX + tdx);
         int cy0 = (int)lroundf(CX + tdy);
-        // 1. 左下方贴边 VOLUME 与音量轨区域 (X <= 140, Y >= 260)
+        // 1. 正左方 9 点钟贴边 VOLUME 与音量轨区域 (X <= 120, |Y - CX| <= 90)
         float distSq = (float)(cx0 - CX) * (cx0 - CX) + (float)(cy0 - CX) * (cy0 - CX);
-        if (cx0 <= 140 && cy0 >= 260 && distSq >= 160.0f * 160.0f) {
+        if (cx0 <= 120 && abs(cy0 - CX) <= 90 && distSq >= 150.0f * 150.0f) {
           volSliding = true;
           volActiveUntil = now + 2000;
           touchEat = true;
           float a = atan2f((float)(cx0 - CX), (float)(CX - cy0));
           if (a < 0) a += 2.0f * (float)M_PI;
           float p = a / (2.0f * (float)M_PI);
-          int newVol = constrain(lroundf((p - 0.575f) / (0.725f - 0.575f) * 100.0f), 0, 100);
+          int newVol = constrain(lroundf((p - 0.68f) / (0.82f - 0.68f) * 100.0f), 0, 100);
           if (newVol != musicVolume) {
             musicVolume = newVol;
             musicDirty = true;
@@ -263,10 +265,19 @@ void touchPoll() {
       float a = atan2f((float)(cx1 - CX), (float)(CX - cy1));
       if (a < 0) a += 2.0f * (float)M_PI;
       float p = a / (2.0f * (float)M_PI);
-      int newVol = constrain(lroundf((p - 0.575f) / (0.725f - 0.575f) * 100.0f), 0, 100);
+      int newVol = constrain(lroundf((p - 0.68f) / (0.82f - 0.68f) * 100.0f), 0, 100);
       if (abs(newVol - musicVolume) >= 2) {
         musicVolume = newVol;
         volActiveUntil = now + 2000;
+        musicDirty = true;
+      }
+    }
+
+    if (page == 2 && coverTouchActive && !volSliding) {
+      int curDx = touchX1 - touchX0;
+      int curDy = touchY1 - touchY0;
+      if (abs(curDx) > 8 && abs(curDx) > abs(curDy)) {
+        coverSlideDx = constrain(curDx, -180, 180);
         musicDirty = true;
       }
     }
@@ -307,36 +318,26 @@ void touchPoll() {
       touchEat = true;
       int dx = touchX1 - touchX0;
       int dy = touchY1 - touchY0;
-      if (dx < -35 && abs(dx) > abs(dy)) {
-        // 向左滑动封面 -> 下一曲
-        pendingEvt = "T,M,N,0,0,2";
-        musicAck = 1; musicAckUntil = now + 2500;
-        CompanionMode::startVibration(100, 35);
-        musicDirty = true;
-      } else if (dx > 35 && abs(dx) > abs(dy)) {
-        // 向右滑动封面 -> 上一曲
-        pendingEvt = "T,M,P,0,0,0";
-        musicAck = 1; musicAckUntil = now + 2500;
-        CompanionMode::startVibration(100, 35);
-        musicDirty = true;
-      } else if (abs(dx) < 25 && abs(dy) < 25) {
-        // 原地轻触
+
+      // 1. 原地轻触判定 (位移 <= 45 像素，避免误判切歌)
+      if (abs(dx) <= 45 && abs(dy) <= 45) {
+        coverSlideDx = 0;
+        coverFlySpeed = 0;
         float tdx = touchX0 - CX, tdy = touchY0 - CX;
         touchVectorToCanvas(tdx, tdy);
         int cx0 = (int)lroundf(CX + tdx);
         int cy0 = (int)lroundf(CX + tdy);
         int ldx = cx0 - 301, ldy = cy0 - 214;
-        if (ldx * ldx + ldy * ldy <= 24 * 24) {
-          // 直接点击右下角 Like
+        if (ldx * ldx + ldy * ldy <= 28 * 28) {
+          // 点击右下角 Like
           musicLiked = !musicLiked;
           pendingEvt = String("T,M,L,") + (musicLiked ? "1" : "0");
           musicAck = 1; musicAckUntil = now + 2500;
           CompanionMode::startVibration(120, 40);
           musicDirty = true;
         } else {
-          // 封面主体：双击 vs 单击判定
+          // 封面中心主体：双击 vs 单击判定播放/暂停
           if (now - lastCoverTapAt <= 320) {
-            // 双击封面：切换 Like / Dislike
             coverPendingSingleTap = false;
             lastCoverTapAt = 0;
             musicLiked = !musicLiked;
@@ -345,10 +346,27 @@ void touchPoll() {
             CompanionMode::startVibration(150, 45);
             musicDirty = true;
           } else {
-            // 单击等待延迟判定播放/暂停
             coverPendingSingleTap = true;
             lastCoverTapAt = now;
           }
+        }
+      }
+      // 2. 明确的左右横向手势切歌 (水平位移 >= 50 像素，且水平显著大于垂直)
+      else if (abs(dx) >= 50 && abs(dx) >= (int)(abs(dy) * 1.3f)) {
+        if (dx < -50) {
+          // 向左快速滑出离开 -> 下一曲
+          coverFlySpeed = -32;
+        } else {
+          // 向右快速滑出离开 -> 上一曲
+          coverFlySpeed = +32;
+        }
+        musicDirty = true;
+      }
+      // 3. 拖拽了但不够阈值：弹性回弹原位
+      else {
+        if (coverSlideDx != 0) {
+          coverFlySpeed = (coverSlideDx > 0) ? -20 : +20;
+          musicDirty = true;
         }
       }
     }
