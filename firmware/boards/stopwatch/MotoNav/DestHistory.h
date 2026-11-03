@@ -41,3 +41,4 @@ inline void destInitDefaults() {
   destItemAdd(0, "HOME", "Favorite Place");
   destItemAdd(0, "WORK", "Favorite Place");
 }
+

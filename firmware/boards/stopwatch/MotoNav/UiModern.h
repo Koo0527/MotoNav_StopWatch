@@ -264,3 +264,4 @@ static inline void drawViceCityBackground() {
     }
   }
 }
+

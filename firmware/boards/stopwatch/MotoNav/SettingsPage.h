@@ -224,3 +224,4 @@ void settingsPageTap(int x, int y) {
 
   drawSettingsPage();
 }
+
