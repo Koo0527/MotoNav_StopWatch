@@ -144,8 +144,9 @@ void drawWaiting(int st) {
 
   // 3. 原生经典连接状态提示 (居中醒目大字号，彻底告别细小微型胶囊)
   if (st == WAIT_READY || (bleConnected && bleAuthed)) {
-    aaDisc((float)(CX - 38), 58.0f, 4.5f, C_GREEN);
-    drawAaString(CX + 6, 58, "READY", 1.8f, 1.05f, 11.5f, C_GREEN, true);
+    // 采用与罪恶都市地图一致的高雅柔和绿 0x760D
+    aaDisc((float)(CX - 38), 58.0f, 4.5f, 0x760D);
+    drawAaString(CX + 6, 58, "READY", 1.8f, 1.05f, 11.5f, 0x760D, true);
   } else if (st == WAIT_NOLINK || !bleConnected) {
     aaDisc((float)(CX - 42), 58.0f, 4.5f, C_GREY);
     drawAaString(CX + 6, 58, "NO LINK", 1.8f, 1.05f, 11.5f, C_GREY, true);

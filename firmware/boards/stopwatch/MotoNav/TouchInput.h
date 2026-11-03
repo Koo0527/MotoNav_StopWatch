@@ -483,10 +483,16 @@ void touchPoll() {
     }
     if (callOn || pairOn || touchEat || fxOn) dragAbort();
     else {
-      if (page == 2 && abs(touchX1 - touchX0) < 36 && abs(touchY1 - touchY0) < 36) musicTap(touchX0, touchY0);
-      if (page == 0 && !inNav && abs(touchX1 - touchX0) < 36 && abs(touchY1 - touchY0) < 36) waitingScreenTap(touchX0, touchY0);
-      if (page == 1 && abs(touchX1 - touchX0) < 36 && abs(touchY1 - touchY0) < 36) settingsPageTap(touchX0, touchY0);
-      if (page == 3 && abs(touchX1 - touchX0) < 36 && abs(touchY1 - touchY0) < 36) leanMeterTap(touchX0, touchY0);
+      // 统一将硬件物理触摸点按当前屏幕旋转映射至画布坐标系，彻底杜绝旋转后的触控错位！
+      float tdx = touchX0 - CX, tdy = touchY0 - CX;
+      touchVectorToCanvas(tdx, tdy);
+      int canvasX = (int)lroundf(CX + tdx);
+      int canvasY = (int)lroundf(CX + tdy);
+
+      if (page == 2 && abs(touchX1 - touchX0) < 36 && abs(touchY1 - touchY0) < 36) musicTap(canvasX, canvasY);
+      if (page == 0 && !inNav && abs(touchX1 - touchX0) < 36 && abs(touchY1 - touchY0) < 36) waitingScreenTap(canvasX, canvasY);
+      if (page == 1 && abs(touchX1 - touchX0) < 36 && abs(touchY1 - touchY0) < 36) settingsPageTap(canvasX, canvasY);
+      if (page == 3 && abs(touchX1 - touchX0) < 36 && abs(touchY1 - touchY0) < 36) leanMeterTap(canvasX, canvasY);
       dragEnd();
     }
     touchEat = false;

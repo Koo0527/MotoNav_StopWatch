@@ -747,6 +747,11 @@ void loop() {
     }
   }
 
+  // 设置页面重力感应随动旋转动态追踪
+  if (page == 1 && settingsAutoRot) {
+    settingsUpdateAutoRot();
+  }
+
   // 手机 App 连接成功后自动跳到主程序界面（仅非导航待机下触发）
   static bool wasBleAuthed = bleConnected && bleAuthed;
   bool authedNow = bleConnected && bleAuthed;

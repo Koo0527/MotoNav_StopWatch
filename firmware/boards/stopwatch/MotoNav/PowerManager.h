@@ -68,7 +68,10 @@ void drawBattery(int x0, int y0, bool backing = false) {
     gfx->fillRoundRect(x0 - 4, y0 - 3, totalW + 8, BH + 6, 6, C_BLACK);
   }
 
-  uint16_t c = batChg ? C_CYAN : batPct > 50 ? C_GREEN : batPct >= 20 ? 0xFE60 : C_RED;
+  // 罪恶都市柔和绿色系：正常电量使用罪恶都市公园绿 0x760D，充电使用青绿水面色 0x4E3B，低电量柔和暖橙 0xFD80，告别刺眼强光
+  const uint16_t C_VICE_PARK_GREEN = 0x760D;
+  const uint16_t C_VICE_WATER_AQUA = 0x4E3B;
+  uint16_t c = batChg ? C_VICE_WATER_AQUA : batPct > 50 ? C_VICE_PARK_GREEN : batPct >= 20 ? 0xFD80 : 0xF9C6;
   if (!batChg && batPct < 10 && (millis() / 600) % 2) c = 0x4208;   // 快没电：闪烁
 
   // 1. 电池主体外框与正极凸头

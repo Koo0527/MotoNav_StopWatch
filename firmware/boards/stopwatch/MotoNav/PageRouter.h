@@ -253,6 +253,11 @@ void musicTap(int x, int y) {
 
 void showPageAnimated(int target, int sx, int sy) {
   if (page == target) return;
+  extern bool settingsAutoRot;
+  if (page == 1 && settingsAutoRot) {
+    settingsAutoRot = false;
+    setScreenDeg(screenDeg, true);
+  }
   dragHoriz = sx != 0 || sy == 0;
   dragSign = dragHoriz ? (sx ? sx : 1) : sy;
   dragTarget = target;
