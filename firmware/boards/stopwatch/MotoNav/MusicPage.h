@@ -183,68 +183,115 @@ static void drawTranslucentRoundRect(int rx, int ry, int rw, int rh, int radius,
   gfx->drawRoundRect(rx, ry, rw, rh, radius, 0x4A69);
 }
 
-// 绘制 iPhone 风格中央音量弹窗 HUD (半透明毛玻璃底座 + 矢量喇叭与声波 + 胶囊条 + 百分比)
+// 与 VOLUME 字母完全一致的 5x7 现代无衬线抗锯齿数字及百分号字模 (0~9, %)
+static const uint8_t volumeDigitBitmaps[11][5] = {
+  {0x3E, 0x51, 0x49, 0x45, 0x3E}, // 0
+  {0x00, 0x42, 0x7F, 0x40, 0x00}, // 1
+  {0x42, 0x61, 0x51, 0x49, 0x46}, // 2
+  {0x41, 0x49, 0x49, 0x49, 0x36}, // 3
+  {0x18, 0x14, 0x12, 0x7F, 0x10}, // 4
+  {0x27, 0x45, 0x45, 0x45, 0x39}, // 5
+  {0x3E, 0x49, 0x49, 0x49, 0x30}, // 6
+  {0x01, 0x71, 0x09, 0x05, 0x03}, // 7
+  {0x36, 0x49, 0x49, 0x49, 0x36}, // 8
+  {0x06, 0x49, 0x49, 0x49, 0x3E}, // 9
+  {0x13, 0x0B, 0x34, 0x32, 0x01}, // %
+};
+
+// 绘制与 VOLUME 字母风格一致的抗锯齿单字符
+static void drawAaChar(int cx, int cy, const uint8_t bmp[5], float scale, float dotR, uint16_t color) {
+  for (int col = 0; col < 5; col++) {
+    uint8_t b = bmp[col];
+    for (int row = 0; row < 7; row++) {
+      if ((b >> row) & 1) {
+        float px = cx + (col - 2.0f) * scale;
+        float py = cy + (row - 3.0f) * scale;
+        aaDisc(px, py, dotR, color);
+      }
+    }
+  }
+}
+
+// 绘制与 VOLUME 字母风格完全一致的音量百分比字符串 (水平居中)
+static void drawVolumeDigits(int cx, int cy, int vol, uint16_t color) {
+  char str[10];
+  snprintf(str, sizeof(str), "%d%%", vol);
+  int len = strlen(str);
+  const float scale = 2.1f;        // 字符点间距
+  const float dotR  = 1.15f;       // 抗锯齿圆点半径，与 VOLUME 字母完全一致
+  const float charSpacing = 14.0f; // 字符间距
+  float totalW = (len - 1) * charSpacing;
+  float startX = cx - totalW / 2.0f;
+
+  for (int i = 0; i < len; i++) {
+    char ch = str[i];
+    const uint8_t *bmp = nullptr;
+    if (ch >= '0' && ch <= '9') {
+      bmp = volumeDigitBitmaps[ch - '0'];
+    } else if (ch == '%') {
+      bmp = volumeDigitBitmaps[10];
+    }
+    if (bmp) {
+      drawAaChar((int)lroundf(startX + i * charSpacing), cy, bmp, scale, dotR, color);
+    }
+  }
+}
+
+// 绘制 iPhone 风格小巧中央音量弹窗 HUD (显示在屏幕正正中间，统一抗锯齿无衬线字体)
 static void drawCenterVolumeHUD(int vol) {
-  const int cardW = 156;
-  const int cardH = 156;
-  const int cardX = CX - cardW / 2; // 155
-  const int cardY = 73;             // 居中覆盖在封面核心区域
+  // 小巧精致的 116x116 卡片，居中位于屏幕正正中心 (CX=233, CY=233)
+  const int cardW = 116;
+  const int cardH = 116;
+  const int cardX = CX - cardW / 2; // 175
+  const int cardY = CX - cardH / 2; // 175
 
   // 1. 半透明毛玻璃圆角底座 (75% 纯黑磨砂混合)
-  drawTranslucentRoundRect(cardX, cardY, cardW, cardH, 22, 0x0000, 192);
+  drawTranslucentRoundRect(cardX, cardY, cardW, cardH, 18, 0x0000, 192);
 
-  // 2. iPhone 风格矢量喇叭图标 (居中，Y 坐标 cardY + 38)
-  const int spkX = CX - 10;
-  const int spkY = cardY + 38;
+  // 2. 矢量喇叭图标 (水平居中于 CX，Y = cardY + 28 = 203)
+  const int spkX = CX - 6;
+  const int spkY = cardY + 28;
 
   // 喇叭后腔矩形与扩散口
-  gfx->fillRect(spkX - 12, spkY - 6, 7, 12, C_WHITE);
-  gfx->fillTriangle(spkX - 5, spkY - 6, spkX - 5, spkY + 6, spkX + 4, spkY + 13, C_WHITE);
-  gfx->fillTriangle(spkX - 5, spkY - 6, spkX + 4, spkY + 13, spkX + 4, spkY - 13, C_WHITE);
+  gfx->fillRect(spkX - 10, spkY - 5, 6, 10, C_WHITE);
+  gfx->fillTriangle(spkX - 4, spkY - 5, spkX - 4, spkY + 5, spkX + 4, spkY + 10, C_WHITE);
+  gfx->fillTriangle(spkX - 4, spkY - 5, spkX + 4, spkY + 10, spkX + 4, spkY - 10, C_WHITE);
 
-  // 喇叭右侧声波线 (根据音量大小动态显示 0~3 条圆弧)
+  // 喇叭声波 (静音时使用纯白色斜杠，不使用红叉)
   if (vol == 0) {
-    // 静音：画红色 X 叉
-    gfx->drawLine(spkX + 9, spkY - 6, spkX + 19, spkY + 6, 0xF800);
-    gfx->drawLine(spkX + 19, spkY - 6, spkX + 9, spkY + 6, 0xF800);
+    gfx->drawLine(spkX + 8, spkY - 5, spkX + 16, spkY + 5, C_WHITE);
+    gfx->drawLine(spkX + 9, spkY - 5, spkX + 17, spkY + 5, C_WHITE);
   } else {
-    const int arcRadii[3] = {9, 15, 21};
+    const int arcRadii[3] = {8, 13, 18};
     int numArcs = (vol > 70) ? 3 : (vol > 30 ? 2 : 1);
     for (int a = 0; a < numArcs; a++) {
       int r = arcRadii[a];
-      for (int deg = -42; deg <= 42; deg += 3) {
+      for (int deg = -40; deg <= 40; deg += 4) {
         float rad = deg * (float)M_PI / 180.0f;
         int px = (int)lroundf(spkX + 4 + r * cosf(rad));
         int py = (int)lroundf(spkY + r * sinf(rad));
         gfx->drawPixel(px, py, C_WHITE);
-        gfx->drawPixel(px + 1, py, C_WHITE);
       }
     }
   }
 
-  // 3. iOS 风格水平胶囊音量条
-  const int barW = 114;
-  const int barH = 10;
-  const int barX = CX - barW / 2;
-  const int barY = cardY + 76;
+  // 3. iOS 风格水平胶囊音量条 (居中位于屏幕中心线 Y = 233)
+  const int barW = 86;
+  const int barH = 8;
+  const int barX = CX - barW / 2; // 190
+  const int barY = cardY + 58;
 
   // 底槽
-  gfx->fillRoundRect(barX, barY, barW, barH, 5, 0x2124);
-  // 填充亮条
-  int fillW = constrain((barW * vol) / 100, (vol > 0 ? 8 : 0), barW);
+  gfx->fillRoundRect(barX, barY - 4, barW, barH, 4, 0x2124);
+  // 填充白色高光亮条
+  int fillW = constrain((barW * vol) / 100, (vol > 0 ? 6 : 0), barW);
   if (fillW > 0) {
-    gfx->fillRoundRect(barX, barY, fillW, barH, 5, C_WHITE);
+    gfx->fillRoundRect(barX, barY - 4, fillW, barH, 4, C_WHITE);
   }
-  gfx->drawRoundRect(barX, barY, barW, barH, 5, 0x5AEB);
+  gfx->drawRoundRect(barX, barY - 4, barW, barH, 4, 0x4A69);
 
-  // 4. 百分比大数字清晰居中
-  char vbuf[16];
-  snprintf(vbuf, sizeof(vbuf), "%d%%", vol);
-  gfx->setTextColor(C_WHITE);
-  gfx->setTextSize(3);
-  int txtW = (vol >= 100 ? 54 : (vol >= 10 ? 42 : 30));
-  gfx->setCursor(CX - txtW / 2, cardY + 104);
-  gfx->print(vbuf);
+  // 4. 百分比数字：使用与 VOLUME 字母一模一样的矢量抗锯齿平滑字体 (无锯齿点阵)
+  drawVolumeDigits(CX, cardY + 88, vol, C_WHITE);
 }
 
 // VOLUME 字符抗锯齿切线旋转排布 (5x7 矢量点阵)
