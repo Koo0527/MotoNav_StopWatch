@@ -88,32 +88,12 @@
 
 ---
 
-## 贡献者与 PR 鸣谢
+## 社区 PR 贡献鸣谢
 
-感谢所有向 MotoNav 及本 Stopwatch 专版贡献代码、文档与创意的开发者（按贡献内容与提交记录排序）：
+非常感谢社区开发者向本专版仓库提交的 Pull Request：
 
-- **[nongxl](https://github.com/nongxl)**（本仓库创建者与核心维护者）：
-  - 主导并长期维护 M5Stopwatch 独立演进专版；
-  - 固件架构组件化解耦与重构；
-  - 待机主页罪恶都市暗黑微光网格地图、大号平滑抗锯齿矢量时钟、R星（Rockstar）五角星快速导航抽屉；
-  - 圆屏专属设置页（SettingsPage），实现亮度即调、地图样式切换、屏幕旋转及自动休眠；
-  - 倾角与 G 值仪表赛车 HUD 去像素化与车规级柔和奢华科技配色（薄荷青绿/落日暖金/柔和珊瑚红）；
-  - 音乐播放器深度打磨：封面飞出切歌与黑胶底座、140ms 双向触控防抖滤波、硬件按键（KEY A/B）长按全局切歌、纯黑磨砂 Like 底座、iPhone 风格中央毛玻璃音量 HUD、统一 5x7 抗锯齿数字字模；
-  - 电源管理与关机控制：断连 2 分钟自动进伴侣表情、5 分钟无互动通过 M5PM1 彻底断电关机；
-  - 蓝牙通信优化：底图 Deflate 二次压缩、重叠区 XOR 增量差分传输与流水线加速；高德足迹/行程分享链接解析支持。
-- **[wangan](https://github.com/wangan)**：
-  - 首发将 MotoNav 完整固件成功移植到 M5Stack StopWatch 硬件平台（全链路验证通过：AMOLED 显示、CST820B 触控、物理按键、BLE、导航渲染、休眠唤醒）；
-  - 接入 M5PM1 电源芯片，实现 StopWatch 硬件级精准电池电量读取与上板验证。
-- **[coolmanman](https://github.com/coolmanman)**：
-  - Android 端实现 BLE 自动时间校准（`#TIME` 协议），解决无网或离线时的手表精准对时；
-  - Android v8.3.24-ui.1 实现日夜主题自适应与折叠屏/大屏双栏布局排版；
-  - 修复折叠屏布局切换时 searchCard 重复添加父视图引起的启动闪退。
-- **[Vandd](https://github.com/Vandd)**：
-  - iOS 端实现导入高德「行程报告」分享链接解析与路线规划支持（v0.13.9）。
-- **[desertcool-hub](https://github.com/desertcool-hub)**：
-  - 编写中文版 MotoNav 新手安装与入门指引文档（PR #6）。
-- **[yuminaga / zyn950929](https://github.com/zyn950929)**：
-  - MotoNav 项目原作者与奠基者，开创了圆屏骑行导航仪的通信协议、高德地图数据流抓取与界面雏形。
+- **[vanddccd](https://github.com/vanddccd)**（PR [#1](https://github.com/nongxl/MotoNav_stopwatch/pull/1)）：
+  - **StopWatch 硬件级真关机支持**：实现无 BLE 连接持续满 2 分钟时自动调用 M5PM1 电源芯片 `shutdown()` 进行彻底切断电源的硬件级真关机，同时兼顾 USB 供电接入与伴侣模式的豁免判定，大幅改善了离线放置时的待机功耗。
 
 ---
 
