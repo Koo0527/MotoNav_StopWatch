@@ -419,7 +419,7 @@ void setup() {
     themeIdx = pr.getInt("maptheme", 1);
     if (themeIdx < 0 || themeIdx >= THEME_N) themeIdx = 1;
     userMapScale = pr.getFloat("mapzoom", 1.0f);
-    if (userMapScale < 0.4f || userMapScale > 2.5f || isnan(userMapScale)) userMapScale = 1.0f;
+    if (userMapScale < 0.3f || userMapScale > 3.0f || isnan(userMapScale)) userMapScale = 1.0f;
     pr.end();
     if (qspiMHz != 40 && qspiMHz != 60 && qspiMHz != 80) qspiMHz = 40;
   }

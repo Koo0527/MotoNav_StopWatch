@@ -156,6 +156,7 @@ bool wxDirty = false;                 // v5.3 天气页要重画
 float userMapScale = 1.0f;           // 用户手动设定的基础缩放比例 (默认 1.0x，范围 0.4x ~ 2.5x)
 bool mapZoomActive = false;          // 是否正在双击拖动缩放地图
 uint32_t mapZoomHintUntil = 0;       // 缩放提示卡片显示截止时间
+int16_t mapZoomStartX = 0;           // 双击按住时手指初始 X
 int16_t mapZoomStartY = 0;           // 双击按住时手指初始 Y
 float mapZoomStartScale = 1.0f;      // 双击按住时初始基础比例
 uint32_t lastMapTapAt = 0;           // 导航地图上一次轻触松开的时间 (用于双击判定)

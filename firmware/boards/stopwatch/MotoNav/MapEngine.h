@@ -1459,19 +1459,16 @@ static float smoothAngleDamp(float current, float target, float &currentVelocity
 // 缩放倍率 HUD 浮层 (双击按住拖拽或微调时显示)
 void drawMapZoomHint(uint32_t now) {
   if (now >= mapZoomHintUntil) return;
-  int cardW = 120, cardH = 34;
+  int cardW = 140, cardH = 38;
   int cardX = CX - cardW / 2;
-  int cardY = 285;
+  int cardY = 282;
   uint16_t borderCol = mapZoomActive ? 0x07E0 : 0x4A69; // 正在操作时边框高亮绿色
-  gfx->fillRoundRect(cardX, cardY, cardW, cardH, 8, 0x18C3);
-  gfx->drawRoundRect(cardX, cardY, cardW, cardH, 8, borderCol);
+  drawTranslucentRoundRect(cardX, cardY, cardW, cardH, 12, 0x0000, 200);
+  gfx->drawRoundRect(cardX, cardY, cardW, cardH, 12, borderCol);
   
   char buf[20];
   snprintf(buf, sizeof(buf), "ZOOM %.1fx", userMapScale);
-  gfx->setTextSize(2);
-  gfx->setTextColor(0xFFFF);
-  gfx->setCursor(cardX + 10, cardY + 9);
-  gfx->print(buf);
+  drawAaString((float)CX, (float)(cardY + cardH / 2), buf, 1.8f, 1.05f, 11.5f, C_WHITE, true);
 }
 
 // 实心多边形（扫描线，奇偶规则，带亚像素边缘抗锯齿）
@@ -2491,12 +2488,11 @@ void drawMapFrame() {
   bool useRaster = rasOK && (!vecOK || rasterAt >= vectorAt);
 
   // 基础缩放比例与车速放缓动态叠加：
-  // 用户基础缩放（以 0.85 为 1.0x 标准基准）
+  // 用户基础缩放（以 0.85 为 1.0x 标准基准，支持 0.3x ~ 3.0x 全范围顺滑缩放，解除对栅格地图的截断限制）
   float baseS = 0.85f * userMapScale;
-  if (useRaster && baseS > 0.60f) baseS = 0.60f;
   // 车速放缓叠加系数：车速放缓为 0 时倍率最高(1.0f)，高速行驶时平滑拉远拓展视野(最低约 0.45f)
   float speedFactor = constrain(1.0f - (posKmh > 0 ? posKmh : 0) * (0.006f / 0.85f), 0.45f, 1.0f);
-  float targetS = constrain(baseS * speedFactor, 0.18f, 2.50f);
+  float targetS = constrain(baseS * speedFactor, 0.15f, 3.00f);
   if (mapZoomActive) {
     viewScale = targetS; // 双击按住滑动缩放时：实时贴手无延迟！
   } else {

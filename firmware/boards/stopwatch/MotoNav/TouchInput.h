@@ -283,6 +283,7 @@ void touchPoll() {
             abs(x[0] - lastMapTapX) <= 65 && abs(y[0] - lastMapTapY) <= 65) {
           mapZoomActive = true;
           touchEat = true;
+          mapZoomStartX = x[0];
           mapZoomStartY = y[0];
           mapZoomStartScale = userMapScale;
           mapZoomHintUntil = now + 2500;
@@ -373,11 +374,13 @@ void touchPoll() {
 
     if (mapZoomActive) {
       touchEat = true;
-      float vx = 0, vy = touchY1 - mapZoomStartY;
+      float vx = touchX1 - mapZoomStartX;
+      float vy = touchY1 - mapZoomStartY;
       touchVectorToCanvas(vx, vy);
       float dy = vy; // 在屏幕画布方向：dy < 0 向上滑放大，dy > 0 向下滑缩小
-      float delta = -dy * (1.0f / 140.0f);
-      userMapScale = constrain(mapZoomStartScale + delta, 0.40f, 2.50f);
+      // 优化滑动行程灵敏度：每垂直滑动 75 像素对应 1.0x 缩放变化，手指在 466 AMOLED 屏幕内轻松滑至 2.5x/3.0x
+      float delta = -dy * (1.0f / 75.0f);
+      userMapScale = constrain(mapZoomStartScale + delta, 0.30f, 3.00f);
       mapZoomHintUntil = now + 2000;
       navDirty = true;
     }
