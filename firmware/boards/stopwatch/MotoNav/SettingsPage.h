@@ -88,43 +88,74 @@ static inline const char* getThemeDisplayLabel() {
   return "VICE CITY";
 }
 
-// 绘制重力感应旋转校准界面（高帧率超流畅：横跨屏幕水平线 + 垂直地面垂线 + 实时角度指示）
+// 绘制重力感应旋转校准界面（完整保留设置页背景与卡片全貌，实时呈现随动旋转效果，纯白基准十字线呈 90° 相交）
 void drawRotationCalibPage() {
   onWaitScreen = false;
   frameIsMap = false;
 
-  // 1. 沉稳纯黑背景
+  // 1. 绘制暗黑主题背景底图
   gfx->fillScreen(C_BLACK);
+  drawThemedMapBackground();
 
-  // 2. 横跨屏幕的水平基准线（长度为圆屏直径 466px，通过正中心 Y=CX，罪恶都市经典柔和绿 0x760D）
-  const uint16_t c_line = 0x760D;
-  gfx->fillRect(0, CX - 1, LCD_WIDTH, 2, c_line);
+  // 绘制 4 张设置卡片（让用户在转动时能实时看到设置界面的真实旋转效果）
+  const int cardW = 164, cardH = 108, gapX = 14, gapY = 16;
+  const int leftX  = CX - cardW - gapX / 2;
+  const int rightX = CX + gapX / 2;
+  const int topY   = 94, botY = topY + cardH + gapY;
 
-  // 3. 水平线中间下方垂直地面的线（长度为圆屏半径 233px，从 (CX, CX) 向下垂直延伸至屏幕底部）
-  // 两条线呈 90 度垂直相交
-  gfx->fillRect(CX - 1, CX, 2, CX, c_line);
+  // 4 个卡片底座与边框
+  drawTranslucentRoundRect(leftX,  topY, cardW, cardH, 16, 0x0000, 180);
+  gfx->drawRoundRect(leftX,  topY, cardW, cardH, 16, 0x2965);
+  drawTranslucentRoundRect(rightX, topY, cardW, cardH, 16, 0x0000, 180);
+  gfx->drawRoundRect(rightX, topY, cardW, cardH, 16, 0x2965);
+  drawTranslucentRoundRect(leftX,  botY, cardW, cardH, 16, 0x0000, 180);
+  gfx->drawRoundRect(leftX,  botY, cardW, cardH, 16, 0x2965);
+  drawTranslucentRoundRect(rightX, botY, cardW, cardH, 16, 0x0000, 180);
+  gfx->drawRoundRect(rightX, botY, cardW, cardH, 16, 0x2965);
 
-  // 4. 中心相交点精致小圆心
-  aaDisc((float)CX, (float)CX, 4.5f, c_line);
+  // 绘制各卡片图标与文字
+  drawSettingsIcon(0, leftX + cardW / 2, topY + 26, 0xDEFB);
+  drawAaString(leftX + cardW / 2, topY + 54, "BRIGHTNESS", 1.3f, 0.8f, 9.0f, 0x8C71, true);
+
+  drawSettingsIcon(1, rightX + cardW / 2, topY + 26, 0xDEFB);
+  drawAaString(rightX + cardW / 2, topY + 54, "MAP STYLE", 1.3f, 0.8f, 9.0f, 0x8C71, true);
+
+  drawSettingsIcon(2, leftX + cardW / 2, botY + 26, 0xDEFB);
+  drawAaString(leftX + cardW / 2, botY + 54, "ROTATION", 1.3f, 0.8f, 9.0f, 0x8C71, true);
+
+  drawSettingsIcon(3, rightX + cardW / 2, botY + 26, 0xDEFB);
+  drawAaString(rightX + cardW / 2, botY + 54, "AUTO SLEEP", 1.3f, 0.8f, 9.0f, 0x8C71, true);
+
+  // 2. 纯白基准十字线（白色水平线直径 + 垂直地面垂线半径，90 度垂直相交）
+  // 横跨屏幕的水平基准线：长度 466px，贯穿正中心 Y = CX，纯白色，线宽 2px
+  gfx->fillRect(0, CX - 1, LCD_WIDTH, 2, C_WHITE);
+
+  // 垂直地面的线：长度 233px，从中心 (CX, CX) 垂直延伸至屏幕底部，纯白色，线宽 2px
+  gfx->fillRect(CX - 1, CX, 2, CX, C_WHITE);
+
+  // 中心相交点纯白精致圆点
+  aaDisc((float)CX, (float)CX, 4.5f, C_WHITE);
   aaDisc((float)CX, (float)CX, 2.0f, C_BLACK);
 
-  // 5. 旋转角度数字显示：在水平线中间上方（大号抗锯齿平滑字体）
+  // 3. 旋转角度数字显示：在水平线中间上方（纯白色大号抗锯齿平滑字体，带高对比半透明黑色底衬）
   int curAngle = (int)lroundf(autoRotAngleSmoothed);
   curAngle = ((curAngle % 360) + 360) % 360;
   char degBuf[16];
   snprintf(degBuf, sizeof(degBuf), "%d*", curAngle);
-  drawAaString((float)CX, (float)(CX - 36), degBuf, 3.2f, 1.8f, 22.0f, C_WHITE, true);
+  drawTranslucentRoundRect(CX - 50, CX - 54, 100, 38, 12, 0x0000, 210);
+  gfx->drawRoundRect(CX - 50, CX - 54, 100, 38, 12, 0x4A69);
+  drawAaString((float)CX, (float)(CX - 35), degBuf, 3.2f, 1.8f, 22.0f, C_WHITE, true);
 
-  // 6. 顶部与底部极简提示
-  // 顶部：AUTO ROTATE 状态指示
-  drawTranslucentRoundRect(CX - 72, 44, 144, 28, 14, 0x0000, 180);
-  gfx->drawRoundRect(CX - 72, 44, 144, 28, 14, 0x2965);
-  drawAaString((float)CX, 58.0f, "AUTO ROTATE", 1.4f, 0.85f, 9.5f, 0x8C71, true);
+  // 4. 顶部与底部极简提示
+  // 顶部：AUTO ROTATE
+  drawTranslucentRoundRect(CX - 72, 44, 144, 28, 14, 0x0000, 200);
+  gfx->drawRoundRect(CX - 72, 44, 144, 28, 14, 0x39E7);
+  drawAaString((float)CX, 58.0f, "AUTO ROTATE", 1.4f, 0.85f, 9.5f, C_WHITE, true);
 
-  // 底部：TAP ANYWHERE TO LOCK 操作指引
-  drawTranslucentRoundRect(CX - 110, 396, 220, 30, 15, 0x0000, 180);
-  gfx->drawRoundRect(CX - 110, 396, 220, 30, 15, c_line);
-  drawAaString((float)CX, 411.0f, "TAP ANYWHERE TO LOCK", 1.3f, 0.8f, 9.0f, c_line, true);
+  // 底部：TAP ANYWHERE TO LOCK (点击任意位置锁定)
+  drawTranslucentRoundRect(CX - 110, 396, 220, 30, 15, 0x0000, 200);
+  gfx->drawRoundRect(CX - 110, 396, 220, 30, 15, 0x760D);
+  drawAaString((float)CX, 411.0f, "TAP ANYWHERE TO LOCK", 1.3f, 0.8f, 9.0f, 0x760D, true);
 
   needFlush = true;
 }
