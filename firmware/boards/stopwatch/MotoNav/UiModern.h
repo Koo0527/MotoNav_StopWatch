@@ -204,63 +204,90 @@ static inline void drawRockstarStar(int cx, int cy, float outerR, float innerR, 
   }
 }
 
-// 4. 罪恶都市风格暗黑微光网格地图背景生成
+// 4. 罪恶都市风格地图背景生成 (完美复刻 App 截图：暖沙色街区、青绿水面、粉紫路线，半透明暗化融合)
 static inline void drawViceCityBackground() {
   uint16_t *fb = gfx->getFramebuffer();
   if (!fb) return;
   const int W = LCD_WIDTH;  // 466
   const int H = LCD_HEIGHT; // 466
 
-  // 基础背景：极深紫黑色 (暗黑罪恶都市氛围)
-  gfx->fillScreen(0x0823);
+  // 1. 基础底色：暖沙色街区地面 (THEMES[1].block = 0xE6D9)
+  const uint16_t c_sand  = 0xE6D9;
+  const uint16_t c_road  = 0x3187;
+  const uint16_t c_park  = 0x760D;
+  const uint16_t c_water = 0x4E3B;
+  const uint16_t c_route = 0xF258;
+  const uint16_t c_node  = 0x78EC;
 
-  // 绘制暗青/深紫细街道微光网格 (带轻微斜角感)
-  const uint16_t gridColor = 0x1065; // 深微光紫青
-  for (int x = 40; x < W; x += 44) {
-    for (int y = 0; y < H; y += 4) {
-      int px = x + (y / 18);
-      if (px >= 0 && px < W) fb[y * W + px] = gridColor;
-    }
-  }
-  for (int y = 50; y < H; y += 44) {
-    for (int x = 0; x < W; x += 4) {
-      int py = y - (x / 24);
-      if (py >= 0 && py < H) fb[py * W + x] = gridColor;
-    }
-  }
+  gfx->fillScreen(c_sand);
 
-  // 绘制 2 条具有弧度与交汇的现代城市主干高架道路 (暗品红/霓虹微紫 0x8153 & 柔和深青 0x1336)
-  for (int x = 20; x < W - 20; x++) {
-    float nx = (float)(x - W / 2) / 160.0f;
-    int y1 = (int)(250 + 48.0f * sinf(nx * 1.6f));
-    int y2 = (int)(180 - 60.0f * cosf(nx * 1.2f));
-
-    if (y1 >= 2 && y1 < H - 2) {
-      fb[(y1 - 1) * W + x] = 0x48B0; // 微光晕
-      fb[y1 * W + x]       = 0x9173; // 霓虹紫干线
-      fb[(y1 + 1) * W + x] = 0x48B0;
-    }
-    if (y2 >= 2 && y2 < H - 2) {
-      fb[(y2 - 1) * W + x] = 0x09F1;
-      fb[y2 * W + x]       = 0x1458; // 暗青支干线
-      fb[(y2 + 1) * W + x] = 0x09F1;
+  // 2. 左侧蜿蜒水面 / 河流 (青绿水系 0x4E3B)
+  for (int y = 0; y < H; y++) {
+    float ny = (float)y / 466.0f;
+    int wx = (int)(78 + 32.0f * sinf(ny * 3.14159f * 1.5f));
+    int x0 = max(0, wx - 22);
+    int x1 = min(W - 1, wx + 22);
+    for (int x = x0; x <= x1; x++) {
+      fb[y * W + x] = c_water;
     }
   }
 
-  // 中心暗化渐晕：将时钟和卡片所在的中心区域做暗化微晕，使前景文字凸显
+  // 3. 街区公园绿地 (草绿色 0x760D)
+  gfx->fillRect(140, 70, 52, 44, c_park);
+  gfx->fillRect(276, 268, 64, 52, c_park);
+  gfx->fillRect(160, 360, 48, 38, c_park);
+
+  // 4. 纵横深色道路网格 (深灰黑街道 0x3187，线宽 4px)
+  for (int x = 42; x < W; x += 48) {
+    gfx->fillRect(x - 2, 0, 4, H, c_road);
+  }
+  for (int y = 42; y < H; y += 48) {
+    gfx->fillRect(0, y - 2, W, 4, c_road);
+  }
+
+  // 5. 导航行车历史轨迹 (深灰色线)
+  gfx->fillRect(CX - 1, 280, 3, 140, 0x4208);
+
+  // 6. 荧光粉紫导航路线 (0xF258，线宽 6px，路口直角转弯)
+  // 纵向段：从 Y=280 向上延伸至 Y=186
+  gfx->fillRect(CX - 3, 186, 6, 94, c_route);
+  // 横向段：从 X=233 向右延伸至 X=378
+  gfx->fillRect(CX - 3, 183, 148, 6, c_route);
+  // 转弯路口粉紫小圆环节点
+  aaDisc((float)CX, 186.0f, 6.0f, c_node);
+  aaDisc((float)CX, 186.0f, 3.0f, c_route);
+
+  // 7. 自车定位航向箭头 (Blip：白色三角车标，带黑色边框，朝向路线前方)
+  const int blipX = CX;
+  const int blipY = 276;
+  gfx->fillTriangle(blipX, blipY - 14, blipX - 8, blipY + 6, blipX + 8, blipY + 6, C_BLACK);
+  gfx->fillTriangle(blipX, blipY - 11, blipX - 6, blipY + 4, blipX + 6, blipY + 4, C_WHITE);
+  gfx->fillTriangle(blipX, blipY - 1, blipX - 4, blipY + 4, blipX + 4, blipY + 4, C_BLACK);
+
+  // 8. 半透明暗化处理 (与纯黑做 50% 优雅混叠，外圈加雷达暗角 Vignette，绝无色彩通道溢出)
   for (int y = 0; y < H; y++) {
     int dy = y - H / 2;
     uint16_t *row = &fb[y * W];
     for (int x = 0; x < W; x++) {
       int dx = x - W / 2;
-      int dist2 = dx * dx + dy * dy;
-      if (dist2 < 170 * 170) {
-        // 中心 170px 内轻微增加纯黑磨砂度，使前景大时钟清晰无比
-        uint16_t c = row[x];
-        uint32_t rb = (c & 0xF81F) * 190;
-        uint32_t g  = (c & 0x07E0) * 190;
-        row[x] = (uint16_t)(((rb >> 8) & 0xF81F) | ((g >> 8) & 0x07E0));
+      int r2 = dx * dx + dy * dy;
+
+      uint16_t c = row[x];
+      // 基础半透明暗化系数：约 46% (118/256)
+      uint32_t ratio = 118;
+
+      // 圆屏边缘 180px 外渐变黑色暗角晕轮
+      if (r2 > 180 * 180) {
+        int dist = (int)sqrtf((float)r2) - 180;
+        int vignette = max(0, 118 - dist * 2);
+        ratio = (uint32_t)vignette;
       }
+
+      // 安全分离 RGB565 三通道独立缩放，彻底杜绝位移重叠导致的纯蓝色偏！
+      uint32_t r = ((c >> 11) & 0x1F) * ratio >> 8;
+      uint32_t g = ((c >> 5)  & 0x3F) * ratio >> 8;
+      uint32_t b = (c & 0x1F)         * ratio >> 8;
+      row[x] = (uint16_t)((r << 11) | (g << 5) | b);
     }
   }
 }
