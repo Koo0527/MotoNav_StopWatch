@@ -54,68 +54,64 @@ bool slidePrepare(int target) {
   return true;
 }
 
-// 合成一帧：新页面已经进来 p 像素（盖在上面），旧页面往同方向退 30%、变暗，交界处一道阴影
+// 合成一帧：全采用纯 32 位整块高速 memcpy 进行物理平移对接（Push-Slide），彻底杜绝逐像素 SPIRAM 运算与灰色裂痕
 void slideCompose(int p) {
   const int W = LCD_WIDTH, H = LCD_HEIGHT;
   if (p < 0) p = 0;
   if (p > (dragHoriz ? W : H)) p = dragHoriz ? W : H;
   uint16_t *fb = gfx->getFramebuffer();
-  int full = dragHoriz ? W : H;
-  int q = p * 3 / 10;                                   // 旧页面退后的距离
-  uint32_t k0 = 32 - (uint32_t)(p * 13 / full);         // 旧页面整体亮度：100% → 约 60%
-  const int SH = 22;                                    // 阴影宽度
+
   if (dragHoriz) {
-    static uint8_t colK[LCD_WIDTH];
-    for (int x = 0; x < W; x++) {
-      int dist = dragSign > 0 ? x - p : (W - p - 1) - x;   // 离交界多远（旧页面这一侧）
-      uint32_t k = k0;
-      if (p > 0 && dist < SH) k = k * (14 + dist * 18 / SH) / 32;
-      colK[x] = (uint8_t)k;
-    }
     for (int y = 0; y < H; y++) {
       int h = chordHalf[y];
       if (!h) continue;
       int xa = max(0, W / 2 - h), xb = min(W, W / 2 + h);
       uint16_t *row = fb + (size_t)y * W;
-      const uint16_t *o = slideOld + (size_t)y * W, *n = slideNew + (size_t)y * W;
-      if (dragSign > 0) {                               // 新页面从左边进来
-        int a = xa, b = min(p, xb);
-        if (b > a) memcpy(row + a, n + (W - p) + a, (b - a) * 2);
-        for (int x = max(p, xa); x < xb; x++) row[x] = colK[x] >= 32 ? o[x - q] : dim565(o[x - q], colK[x]);
-      } else {                                          // 新页面从右边进来
-        int a = max(W - p, xa), b = xb;
-        if (b > a) memcpy(row + a, n + (a - (W - p)), (b - a) * 2);
-        for (int x = xa; x < min(W - p, xb); x++) row[x] = colK[x] >= 32 ? o[x + q] : dim565(o[x + q], colK[x]);
-      }
-      if (p > 1 && p < W - 1) {
-        int ex = dragSign > 0 ? p - 1 : W - p;
-        if (ex >= xa && ex < xb) row[ex] = 0x4A69;
-        int ex2 = ex + (dragSign > 0 ? -1 : 1);
-        if (ex2 >= xa && ex2 < xb) row[ex2] = 0x2945;
+      const uint16_t *o = slideOld + (size_t)y * W;
+      const uint16_t *n = slideNew + (size_t)y * W;
+
+      if (dragSign > 0) { // 新页面从左向右推进来 (向右平移)
+        // 新页面占据 [0, p)，取自 slideNew 的 [W - p, W)
+        int a1 = xa, b1 = min(p, xb);
+        if (b1 > a1) memcpy(row + a1, n + (W - p) + a1, (b1 - a1) * 2);
+
+        // 旧页面占据 [p, W)，取自 slideOld 的 [0, W - p)
+        int a2 = max(p, xa), b2 = xb;
+        if (b2 > a2) memcpy(row + a2, o + (a2 - p), (b2 - a2) * 2);
+      } else {            // 新页面从右向左推进来 (向左平移)
+        // 旧页面占据 [0, W - p)，取自 slideOld 的 [p, W)
+        int a1 = xa, b1 = min(W - p, xb);
+        if (b1 > a1) memcpy(row + a1, o + p + a1, (b1 - a1) * 2);
+
+        // 新页面占据 [W - p, W)，取自 slideNew 的 [0, p)
+        int a2 = max(W - p, xa), b2 = xb;
+        if (b2 > a2) memcpy(row + a2, n + (a2 - (W - p)), (b2 - a2) * 2);
       }
     }
   } else {
+    // 纵向物理平移 (整行极速拷贝)
     for (int y = 0; y < H; y++) {
       int h = chordHalf[y];
       if (!h) continue;
       int xa = max(0, W / 2 - h), xb = min(W, W / 2 + h);
       uint16_t *row = fb + (size_t)y * W;
-      bool isNew = dragSign > 0 ? y < p : y >= H - p;
-      if (isNew) {
-        int sy = dragSign > 0 ? y + (H - p) : y - (H - p);
-        memcpy(row + xa, slideNew + (size_t)sy * W + xa, (xb - xa) * 2);
-        int edge = dragSign > 0 ? p - 1 : H - p;
-        if (p > 1 && p < H - 1 && (y == edge || y == edge + (dragSign > 0 ? -1 : 1))) {
-          uint16_t ec = y == edge ? 0x4A69 : 0x2945;
-          for (int x = xa; x < xb; x++) row[x] = ec;
+
+      if (dragSign > 0) { // 新页面从上向下滑入
+        if (y < p) {
+          int sy = y + (H - p);
+          memcpy(row + xa, slideNew + (size_t)sy * W + xa, (xb - xa) * 2);
+        } else {
+          int sy = y - p;
+          memcpy(row + xa, slideOld + (size_t)sy * W + xa, (xb - xa) * 2);
         }
-      } else {
-        int sy = dragSign > 0 ? y - q : y + q;
-        int dist = dragSign > 0 ? y - p : (H - p - 1) - y;
-        uint32_t k = k0;
-        if (p > 0 && dist < SH) k = k * (14 + dist * 18 / SH) / 32;
-        const uint16_t *o = slideOld + (size_t)sy * W;
-        for (int x = xa; x < xb; x++) row[x] = k >= 32 ? o[x] : dim565(o[x], k);
+      } else {            // 新页面从下向上滑入
+        if (y < H - p) {
+          int sy = y + p;
+          memcpy(row + xa, slideOld + (size_t)sy * W + xa, (xb - xa) * 2);
+        } else {
+          int sy = y - (H - p);
+          memcpy(row + xa, slideNew + (size_t)sy * W + xa, (xb - xa) * 2);
+        }
       }
     }
   }
@@ -162,16 +158,18 @@ void slideCancel() {
   needFlush = true;
 }
 
-// 从 p0 顺势滑到 p1（先快后慢）；ms = 时长
+// 丝滑二次减速曲线（Ease-Out Quad），起步迅捷，收尾自然吸附，结合推屏流水线稳定输出
 void slideAnimate(float p0, float p1, int ms) {
   unsigned long t0 = millis();
   for (;;) {
-    float t = (millis() - t0) / (float)ms;
-    if (t >= 1) break;
-    float e = 1 - (1 - t) * (1 - t) * (1 - t);         // ease-out
-    slideCompose((int)(p0 + (p1 - p0) * e));
+    unsigned long now = millis();
+    float t = (now - t0) / (float)ms;
+    if (t >= 1.0f) break;
+    float e = t * (2.0f - t);
+    slideCompose((int)lroundf(p0 + (p1 - p0) * e));
+    delay(1);
   }
-  slideCompose((int)p1);
+  slideCompose((int)lroundf(p1));
 }
 
 // 触摸向量统一换算：先修正芯片坐标的镜像，再按刷屏的逆旋转映射到画布。
@@ -229,8 +227,8 @@ void dragEnd() {
   if (dragV < -0.35f) go = false;                       // 往回甩：取消
   float target = go ? full : 0;
   float left = fabsf(target - dragP);
-  int ms = 140 + (int)(260 * left / full);
-  if (go && dragV > 0.5f) ms = max(140, (int)(ms * 0.75f));   // 甩得快就滑得快
+  int ms = 90 + (int)(130.0f * left / full);
+  if (go && dragV > 0.5f) ms = max(90, (int)(ms * 0.75f));
   slideAnimate(dragP, target, ms);
   if (go) slideCommit(); else slideCancel();
 }
@@ -263,7 +261,7 @@ void showPageAnimated(int target, int sx, int sy) {
   dragTarget = target;
   if (!slidePrepare(target)) { page = target; renderPage(target); needFlush = true; return; }
   dragging = true;
-  slideAnimate(0, dragHoriz ? LCD_WIDTH : LCD_HEIGHT, 420);
+  slideAnimate(0, dragHoriz ? LCD_WIDTH : LCD_HEIGHT, 220); // 优化为黄金 220ms，利落丝滑
   slideCommit();
 }
 
