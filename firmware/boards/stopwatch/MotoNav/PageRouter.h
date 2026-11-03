@@ -245,30 +245,11 @@ void dragAbort() {
 
 // 将触摸点换算到画布坐标，按钮使用较大的点按范围 (0:上一曲, 1:播放暂停, 2:下一曲, 3:循环模式, 4:Like红心)
 int musicButtonAt(int x, int y) {
-  float dx = x - CX, dy = y - CX;
-  touchVectorToCanvas(dx, dy);
-  x = lroundf(CX + dx); y = lroundf(CX + dy);
-  // 循环模式按键 (CX, 382, 半径 28)
-  int bdx = x - CX, bdy = y - 382;
-  if (bdx * bdx + bdy * bdy <= 30 * 30) return 3;
   return -1;
 }
 
 void musicTap(int x, int y) {
-  if (dragging || page != 2 || callOn || pairOn || !bleConnected || !bleAuthed) return;
-  int button = musicButtonAt(x, y);
-  if (button == 3) {
-    // 循环模式切换 (0: 列表循环 -> 1: 单曲循环 -> 2: 随机播放)
-    musicRepeatMode = (musicRepeatMode + 1) % 3;
-    musicDirty = true;
-    if (hidMusicMode) {
-      appleMedia.control(7); // AdvanceRepeatMode
-    } else {
-      pendingEvt = String("T,M,R,") + musicRepeatMode;
-    }
-    musicAck = 1; musicAckUntil = millis() + 2500;
-    return;
-  }
+  // 音乐页点按全部在 TouchInput 统一处理 (封面滑动切歌/轻触播放暂停/Like红心)
 }
 
 void showPageAnimated(int target, int sx, int sy) {

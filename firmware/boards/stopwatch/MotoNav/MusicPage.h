@@ -121,7 +121,7 @@ static void drawTranslucentCircle(int cx, int cy, int r, uint16_t tintColor = 0x
       row[x] = (uint16_t)(((rb >> 8) & 0xF81F) | ((g >> 8) & 0x07E0));
     }
   }
-  gfx->drawCircle(cx, cy, r, (tintColor != 0) ? 0xFACD : 0x5AEB);
+  gfx->drawCircle(cx, cy, r, 0x39E7);
 }
 
 // 将 180x180 的 coverBuf 高速等比放大绘制至 dstSize x dstSize (例如 206x206)
@@ -147,30 +147,104 @@ static void drawScaledCover(int dstX, int dstY, int dstSize) {
   }
 }
 
-// 绘制循环模式图标 (0: 列表循环, 1: 单曲循环, 2: 随机播放)
-static inline void drawRepeatIcon(int cx, int cy, uint8_t mode) {
-  uint16_t c = (mode == 1) ? 0xFFE0 : (mode == 2 ? 0x07E0 : C_WHITE);
-  if (mode == 2) {
-    // 随机播放：交叉双箭头
-    gfx->drawLine(cx - 8, cy - 5, cx + 2, cy + 5, c);
-    gfx->drawLine(cx + 2, cy + 5, cx + 8, cy + 5, c);
-    gfx->drawLine(cx - 8, cy + 5, cx + 2, cy - 5, c);
-    gfx->drawLine(cx + 2, cy - 5, cx + 8, cy - 5, c);
-    gfx->drawLine(cx + 5, cy - 8, cx + 8, cy - 5, c);
-    gfx->drawLine(cx + 5, cy - 2, cx + 8, cy - 5, c);
-    gfx->drawLine(cx + 5, cy + 2, cx + 8, cy + 5, c);
-    gfx->drawLine(cx + 5, cy + 8, cx + 8, cy + 5, c);
-  } else {
-    // 循环外框环
-    gfx->drawRoundRect(cx - 8, cy - 6, 16, 12, 3, c);
-    gfx->fillTriangle(cx + 6, cy - 9, cx + 10, cy - 6, cx + 6, cy - 3, c);
-    if (mode == 1) {
-      gfx->setTextColor(0xFFE0);
-      gfx->setTextSize(1);
-      gfx->setCursor(cx - 2, cy - 3);
-      gfx->print("1");
+// 绘制半透明圆角矩形毛玻璃卡片 (iOS 深色磨砂玻璃质感)
+static void drawTranslucentRoundRect(int rx, int ry, int rw, int rh, int radius, uint16_t tintColor = 0x0000, uint8_t alpha = 185) {
+  uint16_t *fb = gfx->getFramebuffer();
+  if (!fb) return;
+  const int W = LCD_WIDTH;
+  const int H = LCD_HEIGHT;
+  int invA = 256 - alpha;
+  uint32_t tintRB = (tintColor & 0xF81F) * alpha;
+  uint32_t tintG  = (tintColor & 0x07E0) * alpha;
+
+  int y0 = max(0, ry);
+  int y1 = min(H - 1, ry + rh - 1);
+  int radSq = radius * radius;
+
+  for (int y = y0; y <= y1; y++) {
+    int dy = 0;
+    if (y < ry + radius) dy = ry + radius - y;
+    else if (y > ry + rh - 1 - radius) dy = y - (ry + rh - 1 - radius);
+
+    int cornerCut = 0;
+    if (dy > 0) {
+      cornerCut = radius - (int)sqrtf((float)(radSq - dy * dy));
+    }
+    int curX0 = max(0, rx + cornerCut);
+    int curX1 = min(W - 1, rx + rw - 1 - cornerCut);
+    uint16_t *row = &fb[y * W];
+    for (int x = curX0; x <= curX1; x++) {
+      uint16_t c = row[x];
+      uint32_t rb = (c & 0xF81F) * invA + tintRB;
+      uint32_t g  = (c & 0x07E0) * invA + tintG;
+      row[x] = (uint16_t)(((rb >> 8) & 0xF81F) | ((g >> 8) & 0x07E0));
     }
   }
+  gfx->drawRoundRect(rx, ry, rw, rh, radius, 0x4A69);
+}
+
+// 绘制 iPhone 风格中央音量弹窗 HUD (半透明毛玻璃底座 + 矢量喇叭与声波 + 胶囊条 + 百分比)
+static void drawCenterVolumeHUD(int vol) {
+  const int cardW = 156;
+  const int cardH = 156;
+  const int cardX = CX - cardW / 2; // 155
+  const int cardY = 73;             // 居中覆盖在封面核心区域
+
+  // 1. 半透明毛玻璃圆角底座 (75% 纯黑磨砂混合)
+  drawTranslucentRoundRect(cardX, cardY, cardW, cardH, 22, 0x0000, 192);
+
+  // 2. iPhone 风格矢量喇叭图标 (居中，Y 坐标 cardY + 38)
+  const int spkX = CX - 10;
+  const int spkY = cardY + 38;
+
+  // 喇叭后腔矩形与扩散口
+  gfx->fillRect(spkX - 12, spkY - 6, 7, 12, C_WHITE);
+  gfx->fillTriangle(spkX - 5, spkY - 6, spkX - 5, spkY + 6, spkX + 4, spkY + 13, C_WHITE);
+  gfx->fillTriangle(spkX - 5, spkY - 6, spkX + 4, spkY + 13, spkX + 4, spkY - 13, C_WHITE);
+
+  // 喇叭右侧声波线 (根据音量大小动态显示 0~3 条圆弧)
+  if (vol == 0) {
+    // 静音：画红色 X 叉
+    gfx->drawLine(spkX + 9, spkY - 6, spkX + 19, spkY + 6, 0xF800);
+    gfx->drawLine(spkX + 19, spkY - 6, spkX + 9, spkY + 6, 0xF800);
+  } else {
+    const int arcRadii[3] = {9, 15, 21};
+    int numArcs = (vol > 70) ? 3 : (vol > 30 ? 2 : 1);
+    for (int a = 0; a < numArcs; a++) {
+      int r = arcRadii[a];
+      for (int deg = -42; deg <= 42; deg += 3) {
+        float rad = deg * (float)M_PI / 180.0f;
+        int px = (int)lroundf(spkX + 4 + r * cosf(rad));
+        int py = (int)lroundf(spkY + r * sinf(rad));
+        gfx->drawPixel(px, py, C_WHITE);
+        gfx->drawPixel(px + 1, py, C_WHITE);
+      }
+    }
+  }
+
+  // 3. iOS 风格水平胶囊音量条
+  const int barW = 114;
+  const int barH = 10;
+  const int barX = CX - barW / 2;
+  const int barY = cardY + 76;
+
+  // 底槽
+  gfx->fillRoundRect(barX, barY, barW, barH, 5, 0x2124);
+  // 填充亮条
+  int fillW = constrain((barW * vol) / 100, (vol > 0 ? 8 : 0), barW);
+  if (fillW > 0) {
+    gfx->fillRoundRect(barX, barY, fillW, barH, 5, C_WHITE);
+  }
+  gfx->drawRoundRect(barX, barY, barW, barH, 5, 0x5AEB);
+
+  // 4. 百分比大数字清晰居中
+  char vbuf[16];
+  snprintf(vbuf, sizeof(vbuf), "%d%%", vol);
+  gfx->setTextColor(C_WHITE);
+  gfx->setTextSize(3);
+  int txtW = (vol >= 100 ? 54 : (vol >= 10 ? 42 : 30));
+  gfx->setCursor(CX - txtW / 2, cardY + 104);
+  gfx->print(vbuf);
 }
 
 // VOLUME 字符抗锯齿切线旋转排布 (5x7 矢量点阵)
@@ -214,47 +288,9 @@ static void drawVolumeTextRotated(uint16_t color) {
   }
 }
 
-// 绘制 9 点钟位置、更贴近屏幕边缘的无锯齿音量条
+// 绘制 9 点钟贴边 VOLUME 字符 (作为滑动触控位置提示，进度与数字在中央 HUD 呈现)
 static void drawVolumeArc(int vol, bool showActive) {
-  // 1. 常驻在 9 点钟贴边切线呈现 "VOLUME" (浅灰半透明)
-  drawVolumeTextRotated(showActive ? 0xFFFF : 0xCE79);
-
-  if (!showActive) return;
-
-  // 2. 激活状态：紧贴屏幕外壳边缘 (外径 230，屏幕半径 233)，居中于 9 点钟 (0.75)
-  // 圆周比例：0.68 (8 点 10 分，音量 0%) 到 0.82 (9 点 50 分，音量 100%)
-  const float p_min = 0.68f;
-  const float p_max = 0.82f;
-  const float r_in = 222.0f;
-  const float r_out = 230.0f;
-  const float r_mid = 226.0f;
-  const float half_th = 4.0f;
-
-  // 绘制底轨槽 (深灰抗锯齿)
-  fillRingBand(p_min, p_max, r_in, r_out, 0x2124);
-  float a_min = p_min * 2.0f * (float)M_PI;
-  aaDisc(CX + r_mid * sinf(a_min), CX - r_mid * cosf(a_min), half_th, 0x2124);
-  float a_max = p_max * 2.0f * (float)M_PI;
-  aaDisc(CX + r_mid * sinf(a_max), CX - r_mid * cosf(a_max), half_th, 0x2124);
-
-  // 绘制音量填充弧：从底端 (0%) 顺时针向上生长到顶端 (100%)
-  float p_fill = p_min + (p_max - p_min) * (constrain(vol, 0, 100) / 100.0f);
-  if (vol > 0) {
-    fillRingBand(p_min, p_fill, r_in, r_out, 0x07FF); // 高亮青色
-    aaDisc(CX + r_mid * sinf(a_min), CX - r_mid * cosf(a_min), half_th, 0x07FF);
-    float a_fill = p_fill * 2.0f * (float)M_PI;
-    aaDisc(CX + r_mid * sinf(a_fill), CX - r_mid * cosf(a_fill), half_th, 0x07FF);
-    // 滑块高亮小白点
-    aaDisc(CX + r_mid * sinf(a_fill), CX - r_mid * cosf(a_fill), 6.0f, C_WHITE);
-  }
-
-  // 弧线内侧显示实时百分比大数字 (居中于 9 点钟内侧)
-  char vbuf[16];
-  snprintf(vbuf, sizeof(vbuf), "%d%%", vol);
-  gfx->setTextColor(0x07FF);
-  gfx->setTextSize(2);
-  gfx->setCursor(34, CX - 8);
-  gfx->print(vbuf);
+  drawVolumeTextRotated(showActive ? 0xFFFF : 0x8410);
 }
 
 // 音乐页：沉浸式半透明背景、大专辑封面、内嵌播放键、封面右下角Like、弧形贴边音量、滑动切歌
@@ -309,17 +345,11 @@ void drawMusic() {
     gfx->fillTriangle(pcx - 9, pcy - 15, pcx - 9, pcy + 15, pcx + 15, pcy, C_WHITE);
   }
 
-  // 4. 嵌入专辑封面左下角的循环模式按钮 (半透明底座)
-  const int repX = drawCovX + 28;
-  const int repY = covBaseY + covSize - 28;
-  drawTranslucentCircle(repX, repY, 19, 0x0000, 140);
-  drawRepeatIcon(repX, repY, musicRepeatMode);
-
-  // 5. 嵌入专辑封面右下角的 Like 按钮 (半透明底座，点亮为半透明红宝石光泽)
+  // 4. 嵌入专辑封面右下角的 Like 按钮 (纯黑半透明底座，无论点亮与否背景绝不变红)
   const int likeX = drawCovX + covSize - 28;
   const int likeY = covBaseY + covSize - 28;
-  drawTranslucentCircle(likeX, likeY, 19, musicLiked ? 0x6000 : 0x0000, 150);
-  drawHeartIcon(likeX, likeY, musicLiked ? 0xFACD : 0xCE79, musicLiked);
+  drawTranslucentCircle(likeX, likeY, 19, 0x0000, 140);
+  drawHeartIcon(likeX, likeY, musicLiked ? 0xF800 : 0xCE79, musicLiked);
 
   // 6. 歌曲进度条与大号时间数字 (下移至 Y: 270 ~ 302，宽度自适应放大)
   if (musicHave && musicDuration > 0) {
@@ -367,5 +397,11 @@ void drawMusic() {
 
   // 8. 底部页面指示点
   drawPageDots();
+
+  // 9. iPhone 风格半透明中央音量弹窗 HUD (调节音量时浮现于屏幕正中央)
+  if (showVol) {
+    drawCenterVolumeHUD(musicVolume);
+  }
+
   needFlush = true;
 }

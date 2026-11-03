@@ -398,20 +398,10 @@ void touchPoll() {
         int cx0 = (int)lroundf(CX + tdx);
         int cy0 = (int)lroundf(CX + tdy);
 
-        int rdx = cx0 - 158, rdy = cy0 - 226;
         int ldx = cx0 - 308, ldy = cy0 - 226;
 
-        if (rdx * rdx + rdy * rdy <= 30 * 30) {
-          // 点击封面左下角：切换循环模式
-          coverPendingSingleTap = false;
-          lastCoverTapAt = 0;
-          musicRepeatMode = (musicRepeatMode + 1) % 3;
-          pendingEvt = String("T,M,R,") + String(musicRepeatMode);
-          musicAck = 1; musicAckUntil = now + 2500;
-          CompanionMode::startVibration(100, 35);
-          musicDirty = true;
-        } else if (ldx * ldx + ldy * ldy <= 30 * 30) {
-          // 点击封面右下角：切换 Like / Dislike
+        if (ldx * ldx + ldy * ldy <= 30 * 30) {
+          // 点击封面右下角：切换 Like / Dislike (去除左下角循环模式按钮后，右下角 Like 独立生效)
           coverPendingSingleTap = false;
           lastCoverTapAt = 0;
           musicLiked = !musicLiked;
