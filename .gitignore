@@ -53,3 +53,6 @@ release/
 *.x509.pem
 *.idsig
 *.class
+
+*.ino.cpp
+
