@@ -324,6 +324,7 @@ void musicTick() {
 
   if (coverPendingSingleTap && (long)(millis() - lastCoverTapAt) > 300) {
     coverPendingSingleTap = false;
+    lastCoverTapAt = 0;
     static unsigned long lastPlayPauseSentAt = 0;
     if (millis() - lastPlayPauseSentAt >= 500) {
       lastPlayPauseSentAt = millis();

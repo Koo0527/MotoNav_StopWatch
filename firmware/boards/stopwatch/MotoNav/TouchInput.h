@@ -360,7 +360,7 @@ void touchPoll() {
 
     if (callOn || pairOn || touchEat || fxOn) dragAbort();
     else dragMove(touchX1 - touchX0, touchY1 - touchY0, now);
-  } else if (touchDown && now - touchLastSeen > 120) {
+  } else if (touchDown && now - touchLastSeen > 70) {
     touchDown = false;
     unsigned long pressDuration = now - touchHoldAt;
     touchHoldAt = 0;
@@ -381,6 +381,8 @@ void touchPoll() {
       int dy = (int)lroundf(vy);
       // 1. 明确的左右横向手势切歌 (位移 >= 45 像素，且水平明显大于垂直)
       if (abs(dx) >= 45 && abs(dx) >= (int)(abs(dy) * 1.2f)) {
+        coverPendingSingleTap = false;
+        lastCoverTapAt = 0;
         if (dx < 0) {
           triggerKeyNextTrack(); // 向左滑 -> 下一曲 (发指令+启动向左飞出动画)
         } else {
@@ -388,7 +390,7 @@ void touchPoll() {
         }
       }
       // 2. 原地轻触判定 (短按点击或位移极小，绝对优先作为点击播放/暂停，绝不误切歌)
-      else if (pressDuration < 450 || (abs(dx) <= 40 && abs(dy) <= 40)) {
+      else if ((pressDuration >= 20 && pressDuration < 450) || (abs(dx) <= 35 && abs(dy) <= 35)) {
         coverSlideDx = 0;
         coverFlySpeed = 0;
         float tdx = touchX0 - CX, tdy = touchY0 - CX;
@@ -401,6 +403,8 @@ void touchPoll() {
 
         if (rdx * rdx + rdy * rdy <= 30 * 30) {
           // 点击封面左下角：切换循环模式
+          coverPendingSingleTap = false;
+          lastCoverTapAt = 0;
           musicRepeatMode = (musicRepeatMode + 1) % 3;
           pendingEvt = String("T,M,R,") + String(musicRepeatMode);
           musicAck = 1; musicAckUntil = now + 2500;
@@ -408,6 +412,8 @@ void touchPoll() {
           musicDirty = true;
         } else if (ldx * ldx + ldy * ldy <= 30 * 30) {
           // 点击封面右下角：切换 Like / Dislike
+          coverPendingSingleTap = false;
+          lastCoverTapAt = 0;
           musicLiked = !musicLiked;
           pendingEvt = String("T,M,L,") + (musicLiked ? "1" : "0");
           musicAck = 1; musicAckUntil = now + 2500;
@@ -415,19 +421,20 @@ void touchPoll() {
           musicDirty = true;
         } else {
           // 封面中心主体：双击 vs 单击判定播放/暂停
-          static unsigned long lastCoverPlayTriggerAt = 0;
-          if (now - lastCoverPlayTriggerAt < 500) {
-            // 防抖
-          } else if (lastCoverTapAt > 0 && now - lastCoverTapAt <= 320) {
+          unsigned long dt = (lastCoverTapAt > 0) ? (now - lastCoverTapAt) : 99999UL;
+          if (dt < 140) {
+            // 物理抬手抖动或电容屏脱离瞬态毛刺 (< 140ms)：直接过滤丢弃！维持原单击定时器正常判定
+          } else if (dt <= 360) {
+            // 真正的人类双击 (两次敲击间隔在 140ms ~ 360ms 之间)：触发 Like / Dislike
             coverPendingSingleTap = false;
             lastCoverTapAt = 0;
-            lastCoverPlayTriggerAt = now;
             musicLiked = !musicLiked;
             pendingEvt = String("T,M,L,") + (musicLiked ? "1" : "0");
             musicAck = 1; musicAckUntil = now + 2500;
             CompanionMode::startVibration(150, 45);
             musicDirty = true;
           } else {
+            // 第一次轻触：开启延迟确认，等待是否会有第二次敲击
             coverPendingSingleTap = true;
             lastCoverTapAt = now;
           }
