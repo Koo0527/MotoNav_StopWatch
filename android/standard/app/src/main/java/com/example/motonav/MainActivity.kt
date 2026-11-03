@@ -1096,20 +1096,7 @@ class MainActivity : AppCompatActivity() {
 
     /** 圆屏设置：来电显示、亮度、方向、配对的手机、连哪块圆屏 */
     private fun screenSection(card: LinearLayout) {
-        val bootSub = label("", 12f, SUB)
-        card.addView(settingRow("开机动画 · 摩托车品牌", null, textLink("选择") {
-            android.app.AlertDialog.Builder(this, NavStyle.dialogTheme())
-                .setTitle("选择圆屏开机品牌")
-                .setSingleChoiceItems(BootBrand.labels, BootBrand.selected) { dialog, which ->
-                    BootBrand.select(which)
-                    bootSub.text = BootBrand.summary()
-                    dialog.dismiss()
-                }
-                .setNegativeButton("取消", null).show()
-        }, bootSub))
-        refreshers += { bootSub.text = BootBrand.summary() }
-        card.addView(note("适用 1.75 与 1.85B；保存后断电重启圆屏播放，关闭可直接进入原待机画面"))
-        card.addView(divider())
+        // StopWatch专版：开机动画已精简秒进系统
         // v5.0 来电显示
         val callSub = label("", 12f, SUB).apply {                // v7.5 权限没给全时黄字提示，点一下去授权
             setOnClickListener {
@@ -1209,15 +1196,7 @@ class MainActivity : AppCompatActivity() {
     private fun keySection(card: LinearLayout) {
         val amapSub = label("", 12f, SUB)
         card.addView(settingRow("高德 key", null, textLink("填写 / 修改") { showKeyDialog(first = false) }, amapSub))
-        card.addView(divider())
-        card.addView(divider())
-        val weatherSub = label("和风天气：实况、逐小时、降水、空气、预警", 12f, SUB)
-        card.addView(settingRow("和风天气", null, textLink("配置") { showWeatherConfig() }, weatherSub))
-        card.addView(textLink("查看天气详情与数据来源") {
-            android.app.AlertDialog.Builder(this).setTitle("和风天气")
-                .setMessage(Weather.detailText()).setPositiveButton("关闭", null).show()
-        })
-        refreshers += { weatherSub.text = if (Weather.host().isBlank() || Weather.key().isBlank()) "未配置：请填写 API Host 与 API Key" else "已配置 · 仅查看天气时请求，10分钟缓存" }
+        // StopWatch专版：天气页已改造为圆屏设置，停止手机端天气轮询
         refreshers += {
             val a = Keys.amap(this)
             amapSub.text = Keys.mask(a) + (if (a.isEmpty()) "：导航、搜索、定位都用不了" else if (a != Keys.appliedAmap) "（重启 App 后生效）" else "") +

@@ -21,7 +21,7 @@ float touchHold = 0;                 // 0~1 按住的进度
 bool callAnswerSent = false;
 unsigned long callAnswerAt = 0;
 String pendingProf = "";             // v5.8 分步用时
-String pendingEvt = "";              // 待发给手机的触摸事件
+// pendingEvt moved to GlobalConfig.h
 
 // v5.3 触摸芯片一有动静就拉低中断脚；平时只看这个标记，不用一直读 I2C
 volatile bool touchIrq = false;
@@ -441,7 +441,8 @@ void touchPoll() {
     if (callOn || pairOn || touchEat || fxOn) dragAbort();
     else {
       if (page == 2 && abs(touchX1 - touchX0) < 36 && abs(touchY1 - touchY0) < 36) musicTap(touchX0, touchY0);
-      if (page == 1 && abs(touchX1 - touchX0) < 36 && abs(touchY1 - touchY0) < 36) weatherTap();
+      if (page == 0 && !inNav && abs(touchX1 - touchX0) < 36 && abs(touchY1 - touchY0) < 36) waitingScreenTap(touchX0, touchY0);
+      if (page == 1 && abs(touchX1 - touchX0) < 36 && abs(touchY1 - touchY0) < 36) settingsPageTap(touchX0, touchY0);
       if (page == 3 && abs(touchX1 - touchX0) < 36 && abs(touchY1 - touchY0) < 36) leanMeterTap(touchX0, touchY0);
       dragEnd();
     }

@@ -24,7 +24,7 @@ void renderPage(int p) {
   bool ks = sliding;
   page = p; sliding = false;
   if (p == 2) drawMusic();
-  else if (p == 1) drawWeather();
+  else if (p == 1) drawSettingsPage();
   else if (p == 3) drawLeanMeter();
   else if (p == 4) CompanionMode::drawInitialFrame();
   else if (inNav) drawNavFrame();
@@ -136,8 +136,7 @@ void slideCommit() {
   } else if (page == 1) {
     lastSlideSx = dragHoriz ? dragSign : 0; lastSlideSy = dragHoriz ? 0 : dragSign;
     onWaitScreen = false;
-    wxDirty = false;
-    if (!wxHave || millis() - wxAt > 15UL * 60 * 1000) { pendingEvt = "T,W"; wxAskAt = millis(); }
+    settingsDirty = true;
   } else if (page == 3) {
     onWaitScreen = false;
     leanDirty = true;
@@ -146,7 +145,7 @@ void slideCommit() {
     CompanionMode::enter();
   } else {
     if (inNav) navDirty = true;
-    else { riderPrevF = -1; riderPrevZ = -2; catForce = true; }
+    else { onWaitScreen = true; }
   }
 }
 
@@ -155,11 +154,11 @@ void slideCancel() {
   sliding = false; dragging = false;
   renderPage(page);
   if (page == 2) musicDirty = true;
-  else if (page == 1) wxDirty = false;
+  else if (page == 1) settingsDirty = false;
   else if (page == 3) leanDirty = true;
   else if (page == 4) { onWaitScreen = false; CompanionMode::drawInitialFrame(); }
   else if (inNav) navDirty = true;
-  else { onWaitScreen = true; catForce = true; }
+  else { onWaitScreen = true; }
   needFlush = true;
 }
 
@@ -240,7 +239,7 @@ void dragEnd() {
 void dragAbort() {
   if (!dragging) return;
   sliding = false; dragging = false;
-  if (page == 2) musicDirty = true; else if (page == 1) wxDirty = true; else if (page == 3) leanDirty = true; else if (inNav) navDirty = true;
+  if (page == 2) musicDirty = true; else if (page == 1) settingsDirty = true; else if (page == 3) leanDirty = true; else if (inNav) navDirty = true;
 }
 
 // 将触摸点换算到画布坐标，按钮使用较大的点按范围 (0:上一曲, 1:播放暂停, 2:下一曲, 3:循环模式, 4:Like红心)
@@ -333,18 +332,10 @@ void musicTick() {
   if (musicDirty) { musicDirty = false; drawMusic(); }
 }
 
-// 每圈调用：天气页要不要重画、要不要回导航
-void weatherTick() {
-  if (page != 1 || callOn || sliding) return;
-  unsigned long now = millis();
-  // 导航中：看 15 秒自动回去；快到路口也立刻回去
-  if (inNav && (now - pageAt > 15000 || (navDir != "S" && navDir.length() && navDist > 0 && navDist < 200))) {
-    showPageAnimated(0, -lastSlideSx, -lastSlideSy);   // 按进来的方向反着滑回去
-    return;
-  }
-  // 还没数据或数据旧了：30 秒再要一次
-  if (bleConnected && (!wxHave || now - wxAt > 15UL * 60 * 1000) && now - wxAskAt > 30000) { pendingEvt = "T,W"; wxAskAt = now; }
-  if (wxDirty) { wxDirty = false; drawWeather(); }
+// 每圈调用：设置页要不要重画
+void settingsTick() {
+  if (page != 1 || callOn || pairOn || sliding) return;
+  if (settingsDirty) { settingsDirty = false; drawSettingsPage(); }
 }
 
 // 每圈调用：倾角与 G 值刷新

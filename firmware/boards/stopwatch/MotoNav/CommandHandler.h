@@ -93,6 +93,24 @@ void handleText(const String &m) {
     musicDirty = true;
     return;
   }
+  if (m == "#DEST,CLR") {
+    destItemsClear();
+    needFlush = true;
+    return;
+  }
+  if (m.startsWith("#DEST,ADD,")) {
+    // Format: #DEST,ADD,<type>,<name>,<addr>
+    int firstComma = m.indexOf(',', 10);
+    if (firstComma > 0) {
+      uint8_t type = m.substring(10, firstComma).toInt();
+      int secondComma = m.indexOf(',', firstComma + 1);
+      String name = (secondComma > 0) ? m.substring(firstComma + 1, secondComma) : m.substring(firstComma + 1);
+      String addr = (secondComma > 0) ? m.substring(secondComma + 1) : "";
+      destItemAdd(type, name.c_str(), addr.c_str());
+      needFlush = true;
+    }
+    return;
+  }
   if (m == "P") {
     // 手机发送心跳，说明链路已就绪。若已通过验证，确保向手机确认 U,1（解决手机端订阅较慢错过初始广播的问题）
     if (bleAuthed && txChar && (authNotifies < 10 || millis() - lastAuthNotifyAt > 3000)) {
@@ -318,9 +336,7 @@ void handleText(const String &m) {
   }
   if (m.startsWith("#n,")) { nightOn = m.substring(3).toInt() != 0; navDirty = true; return; }   // v3.0 夜间配色
   if (m == "#o") { ghostN = 0; navDirty = true; return; }   // v4.4 不显示原路线
-  if (m == "#WXRESET") { wxHave = false; wxExtra = false; wxDetail = 0; wxDirty = true; return; }
-  if (m.startsWith("#WX,")) { parseWeatherExtra(m); return; }
-  if (m.startsWith("#W,")) { parseWeather(m); return; }   // v5.3 天气
+  if (m == "#WXRESET" || m.startsWith("#WX,") || m.startsWith("#W,")) { return; }   // v5.3 天气
   if (m.startsWith("#TIME,")) {
     time_t ep = (time_t)strtoul(m.c_str() + 6, NULL, 10);
     if (ep <= 1700000000) {

@@ -94,36 +94,6 @@ static inline void drawHeartIcon(int cx, int cy, uint16_t color, bool filled) {
   }
 }
 
-// 绘制半透明圆盘底座 (与底层封面图像做 alpha 混合，呈现毛玻璃半透明质感)
-static void drawTranslucentCircle(int cx, int cy, int r, uint16_t tintColor = 0x0000, uint8_t alpha = 136) {
-  uint16_t *fb = gfx->getFramebuffer();
-  if (!fb) return;
-  const int W = LCD_WIDTH;
-  const int H = LCD_HEIGHT;
-  int rSq = r * r;
-  int invA = 256 - alpha;
-
-  uint32_t tintRB = (tintColor & 0xF81F) * alpha;
-  uint32_t tintG  = (tintColor & 0x07E0) * alpha;
-
-  int y0 = max(0, cy - r);
-  int y1 = min(H - 1, cy + r);
-  for (int y = y0; y <= y1; y++) {
-    int dy = y - cy;
-    int maxDx = (int)sqrtf((float)(rSq - dy * dy));
-    int x0 = max(0, cx - maxDx);
-    int x1 = min(W - 1, cx + maxDx);
-    uint16_t *row = &fb[y * W];
-    for (int x = x0; x <= x1; x++) {
-      uint16_t c = row[x];
-      uint32_t rb = (c & 0xF81F) * invA + tintRB;
-      uint32_t g  = (c & 0x07E0) * invA + tintG;
-      row[x] = (uint16_t)(((rb >> 8) & 0xF81F) | ((g >> 8) & 0x07E0));
-    }
-  }
-  gfx->drawCircle(cx, cy, r, 0x39E7);
-}
-
 // 将 180x180 的 coverBuf 高速等比放大绘制至 dstSize x dstSize (例如 206x206)
 static void drawScaledCover(int dstX, int dstY, int dstSize) {
   if (!coverBuf) return;
@@ -147,94 +117,11 @@ static void drawScaledCover(int dstX, int dstY, int dstSize) {
   }
 }
 
-// 绘制半透明圆角矩形毛玻璃卡片 (iOS 深色磨砂玻璃质感)
-static void drawTranslucentRoundRect(int rx, int ry, int rw, int rh, int radius, uint16_t tintColor = 0x0000, uint8_t alpha = 185) {
-  uint16_t *fb = gfx->getFramebuffer();
-  if (!fb) return;
-  const int W = LCD_WIDTH;
-  const int H = LCD_HEIGHT;
-  int invA = 256 - alpha;
-  uint32_t tintRB = (tintColor & 0xF81F) * alpha;
-  uint32_t tintG  = (tintColor & 0x07E0) * alpha;
-
-  int y0 = max(0, ry);
-  int y1 = min(H - 1, ry + rh - 1);
-  int radSq = radius * radius;
-
-  for (int y = y0; y <= y1; y++) {
-    int dy = 0;
-    if (y < ry + radius) dy = ry + radius - y;
-    else if (y > ry + rh - 1 - radius) dy = y - (ry + rh - 1 - radius);
-
-    int cornerCut = 0;
-    if (dy > 0) {
-      cornerCut = radius - (int)sqrtf((float)(radSq - dy * dy));
-    }
-    int curX0 = max(0, rx + cornerCut);
-    int curX1 = min(W - 1, rx + rw - 1 - cornerCut);
-    uint16_t *row = &fb[y * W];
-    for (int x = curX0; x <= curX1; x++) {
-      uint16_t c = row[x];
-      uint32_t rb = (c & 0xF81F) * invA + tintRB;
-      uint32_t g  = (c & 0x07E0) * invA + tintG;
-      row[x] = (uint16_t)(((rb >> 8) & 0xF81F) | ((g >> 8) & 0x07E0));
-    }
-  }
-  gfx->drawRoundRect(rx, ry, rw, rh, radius, 0x4A69);
-}
-
-// 与 VOLUME 字母完全一致的 5x7 现代无衬线抗锯齿数字及百分号字模 (0~9, %)
-static const uint8_t volumeDigitBitmaps[11][5] = {
-  {0x3E, 0x51, 0x49, 0x45, 0x3E}, // 0
-  {0x00, 0x42, 0x7F, 0x40, 0x00}, // 1
-  {0x42, 0x61, 0x51, 0x49, 0x46}, // 2
-  {0x41, 0x49, 0x49, 0x49, 0x36}, // 3
-  {0x18, 0x14, 0x12, 0x7F, 0x10}, // 4
-  {0x27, 0x45, 0x45, 0x45, 0x39}, // 5
-  {0x3E, 0x49, 0x49, 0x49, 0x30}, // 6
-  {0x01, 0x71, 0x09, 0x05, 0x03}, // 7
-  {0x36, 0x49, 0x49, 0x49, 0x36}, // 8
-  {0x06, 0x49, 0x49, 0x49, 0x3E}, // 9
-  {0x13, 0x0B, 0x34, 0x32, 0x01}, // %
-};
-
-// 绘制与 VOLUME 字母风格一致的抗锯齿单字符
-static void drawAaChar(int cx, int cy, const uint8_t bmp[5], float scale, float dotR, uint16_t color) {
-  for (int col = 0; col < 5; col++) {
-    uint8_t b = bmp[col];
-    for (int row = 0; row < 7; row++) {
-      if ((b >> row) & 1) {
-        float px = cx + (col - 2.0f) * scale;
-        float py = cy + (row - 3.0f) * scale;
-        aaDisc(px, py, dotR, color);
-      }
-    }
-  }
-}
-
 // 绘制与 VOLUME 字母风格完全一致的音量百分比字符串 (水平居中)
 static void drawVolumeDigits(int cx, int cy, int vol, uint16_t color) {
   char str[10];
   snprintf(str, sizeof(str), "%d%%", vol);
-  int len = strlen(str);
-  const float scale = 2.1f;        // 字符点间距
-  const float dotR  = 1.15f;       // 抗锯齿圆点半径，与 VOLUME 字母完全一致
-  const float charSpacing = 14.0f; // 字符间距
-  float totalW = (len - 1) * charSpacing;
-  float startX = cx - totalW / 2.0f;
-
-  for (int i = 0; i < len; i++) {
-    char ch = str[i];
-    const uint8_t *bmp = nullptr;
-    if (ch >= '0' && ch <= '9') {
-      bmp = volumeDigitBitmaps[ch - '0'];
-    } else if (ch == '%') {
-      bmp = volumeDigitBitmaps[10];
-    }
-    if (bmp) {
-      drawAaChar((int)lroundf(startX + i * charSpacing), cy, bmp, scale, dotR, color);
-    }
-  }
+  drawAaString((float)cx, (float)cy, str, 2.1f, 1.15f, 14.0f, color, true);
 }
 
 // 绘制 iPhone 风格小巧中央音量弹窗 HUD (显示在屏幕正正中间，统一抗锯齿无衬线字体)

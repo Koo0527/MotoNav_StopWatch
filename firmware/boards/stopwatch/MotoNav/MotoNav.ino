@@ -317,6 +317,7 @@ bool fastFlushOn = true;          // v2.6 快速刷屏
 #include "DisplayDriver.h"
 
 #include "NavWidgets.h"
+#include "UiModern.h"
 
 #include "PowerManager.h"
 
@@ -332,7 +333,7 @@ bool fastFlushOn = true;          // v2.6 快速刷屏
 
 #include "CallScreen.h"
 
-#include "WeatherPage.h"
+#include "SettingsPage.h"
 
 // ---- v5.5 跟手换页 ----
 // 触摸坐标和画面方向相反时改成 1（拖动时画面往手指反方向走就是反了）
@@ -350,8 +351,6 @@ void drawNavFrame();
 #include "MusicPage.h"
 
 #include "PageLeanMeter.h"
-
-}
 
 #include "PageRouter.h"
 
@@ -428,16 +427,7 @@ void setup() {
   initDoubleBuffer();                                               // v2.2 双缓冲 + 核心 0 刷屏
   helperInit();                                                     // v5.7 另一个核心帮忙画底图
 
-  if (bootBrand != BootAnimation::Off && gfx->getFramebuffer()) {
-    uint32_t bootAt = millis();
-    while (millis() - bootAt < BootAnimation::Duration) {
-      uint32_t frameAt = millis();
-      BootAnimation::render(gfx->getFramebuffer(), frameAt - bootAt, bootBrand);
-      flushSync();
-      uint32_t spent = millis() - frameAt;
-      delay(spent < 33 ? 33 - spent : 1);
-    }
-  }
+  settingsInit();
   drawWaiting(WAIT_NOLINK);
   flushSync();
   needFlush = false;
@@ -665,7 +655,7 @@ void loop() {
   if (pairOn && (pairDone || millis() - pairShowAt > AUTH_TIMEOUT_MS || !bleConnected)) {
     pairOn = false; pairDone = false;
     if (page == 2) musicDirty = true;
-    else if (page == 1) wxDirty = true;
+    else if (page == 1) settingsDirty = true;
     else if (page == 3) leanDirty = true;
     else if (inNav) navDirty = true;
     else drawWaiting(conn ? WAIT_READY : WAIT_NOLINK);
@@ -681,7 +671,7 @@ void loop() {
   } else if (wasCall) {
     wasCall = false;
     if (page == 2) musicDirty = true;
-    else if (page == 1) wxDirty = true;
+    else if (page == 1) settingsDirty = true;
     else if (page == 3) leanDirty = true;
     else if (inNav) navDirty = true;
     else drawWaiting(conn ? WAIT_READY : WAIT_NOLINK);
@@ -701,7 +691,7 @@ void loop() {
     wasFx = false;
     if (!callOn && !pairOn) {
       if (page == 2) musicDirty = true;
-      else if (page == 1) wxDirty = true;
+      else if (page == 1) settingsDirty = true;
       else if (page == 3) leanDirty = true;
       else if (inNav) navDirty = true;
       else drawWaiting(conn ? WAIT_READY : WAIT_NOLINK);
@@ -709,7 +699,7 @@ void loop() {
   }
 
   musicTick();
-  weatherTick();                                       // v5.3 天气页
+  settingsTick();                                     // 设置页
   leanTick();                                          // StopWatch：倾角与 G 值仪表页
   CompanionMode::updateVibration(millis());            // 全局震动定时调度
 
@@ -793,7 +783,7 @@ void loop() {
     }
   } else if (lightShown && !pairOn && !callOn && !fxOn && !sliding) {
     if (page == 2) musicDirty = true;
-    else if (page == 1) wxDirty = true;
+    else if (page == 1) settingsDirty = true;
     else if (page == 3) leanDirty = true;
     else if (inNav) navDirty = true;
     else drawWaiting(conn ? WAIT_READY : WAIT_NOLINK);
@@ -804,7 +794,7 @@ void loop() {
   }
   lightShown = showLight;
 
-  animateCat();                                        // v3.6 首页猫猫动画
+  // animateCat removed for modern UI
 
   // 6. 有变化才把画布推到屏幕（小地图帧异步推送，其他画面同步推送）
   if (needFlush && !sliding) {

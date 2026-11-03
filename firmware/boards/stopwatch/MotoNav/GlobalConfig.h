@@ -44,6 +44,7 @@ String bleName = DEVICE_NAME;        // v7.0 实际蓝牙名 "MotoNav-XXXX"（XX
 BLECharacteristic *txChar = nullptr;
 
 volatile bool bleConnected = false;
+String pendingEvt = "";
 
 // ===== 接收队列：蓝牙线程收到的每个数据包原样放进队列，主循环再取出处理 =====
 #define RXQ_SLOTS 48   // v2.0 加大，接收地图大块数据时不丢包

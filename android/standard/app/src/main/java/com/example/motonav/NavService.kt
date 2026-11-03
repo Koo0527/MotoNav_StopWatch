@@ -99,7 +99,7 @@ class NavService : Service() {
         MapFeeder.load(this)              // v2.0 读取小地图开关
         AmapCaptureHost.serviceStarted(this)
         CallWatcher.start(this)           // v5.0 来电显示
-        Weather.init(this)                // v5.4 圆屏天气页
+        // Weather.init(this)  // StopWatch 专版
         AmapProbe.ensureReceiver(this)    // v3.5 高德探测：接收车机版广播
         NaviVoice.load(this)              // v3.8 导航语音
     }
