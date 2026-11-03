@@ -147,8 +147,28 @@ void hidMediaTick();
 bool hidMediaReady();
 bool wxDirty = false;                 // v5.3 天气页要重画
 
+// ===== 地图双击拖动缩放控制 =====
+float userMapScale = 1.0f;           // 用户手动设定的基础缩放比例 (默认 1.0x，范围 0.4x ~ 2.5x)
+bool mapZoomActive = false;          // 是否正在双击拖动缩放地图
+uint32_t mapZoomHintUntil = 0;       // 缩放提示卡片显示截止时间
+int16_t mapZoomStartY = 0;           // 双击按住时手指初始 Y
+float mapZoomStartScale = 1.0f;      // 双击按住时初始基础比例
+uint32_t lastMapTapAt = 0;           // 导航地图上一次轻触松开的时间 (用于双击判定)
+int16_t lastMapTapX = 0, lastMapTapY = 0;
+unsigned long mapZoomSaveAt = 0;     // 缩放保存到 NVS 的延迟时间
+
+void saveMapZoomIfDue() {
+  if (!mapZoomSaveAt || (long)(millis() - mapZoomSaveAt) < 0) return;
+  mapZoomSaveAt = 0;
+  Preferences pr;
+  pr.begin("motonav", false);
+  pr.putFloat("mapzoom", userMapScale);
+  pr.end();
+}
+
 // 跨模块前置声明
 void drawLanesAt(float centerX, float y0, float maxW, float maxH);
 void touchVectorToCanvas(float &dx, float &dy);
+bool mapModeActive();
 
 

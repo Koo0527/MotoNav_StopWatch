@@ -1428,8 +1428,8 @@ void viceAACircle(float cx, float cy, float radius, uint16_t color) {
 }
 
 void mapPolyline(const float *xs, const float *ys, int n, float w, uint16_t c, bool caps) {
-  bool vice = styleIdx() == 1;
-  if (vice) initViceSampling();
+  bool aa = (styleIdx() != ST_PIXEL);
+  if (aa) initViceSampling();
   float r = w / 2;
   float pdx = 0, pdy = 0;
   bool havePrev = false;
@@ -1442,7 +1442,7 @@ void mapPolyline(const float *xs, const float *ys, int n, float w, uint16_t c, b
     if (len < 0.5f) continue;
     float ux = dx / len, uy = dy / len;
     float nx = -uy * r, ny = ux * r;
-    if (vice) {
+    if (aa) {
       float px[4] = {x0 + nx, x0 - nx, x1 - nx, x1 + nx};
       float py[4] = {y0 + ny, y0 - ny, y1 - ny, y1 + ny};
       viceAAQuad(px, py, c);
@@ -1450,19 +1450,84 @@ void mapPolyline(const float *xs, const float *ys, int n, float w, uint16_t c, b
       gfx->fillTriangle(x0 + nx, y0 + ny, x0 - nx, y0 - ny, x1 + nx, y1 + ny, c);
       gfx->fillTriangle(x0 - nx, y0 - ny, x1 - nx, y1 - ny, x1 + nx, y1 + ny, c);
     }
-    if (r >= 1.5f) {
-      if (havePrev ? (ux * pdx + uy * pdy < 0.97f) : caps) {
-        if (vice) viceAACircle(x0, y0, r, c); else gfx->fillCircle(x0, y0, r, c);
+    if (r >= 1.0f) {
+      if (havePrev) {
+        if (aa) viceAACircle(x0, y0, r, c); else gfx->fillCircle(x0, y0, r, c);
+      } else if (caps) {
+        if (aa) viceAACircle(x0, y0, r, c); else gfx->fillCircle(x0, y0, r, c);
       }
       if (caps && i + 2 == n) {
-        if (vice) viceAACircle(x1, y1, r, c); else gfx->fillCircle(x1, y1, r, c);
+        if (aa) viceAACircle(x1, y1, r, c); else gfx->fillCircle(x1, y1, r, c);
       }
     }
     pdx = ux; pdy = uy; havePrev = true;
   }
 }
 
-// 实心多边形（扫描线，奇偶规则）
+// 二阶临界阻尼平滑角度跟踪 (Angle SmoothDamp)
+// 保证转角加速度与速度完全连续，杜绝顿挫截断；
+// 限制单帧最大角步长以彻底消除无 TE 屏幕的水平撕裂
+static float viewHdgVel = 0.0f;
+
+static float smoothAngleDamp(float current, float target, float &currentVelocity, float smoothTime, float maxSpeed, float dt) {
+  if (dt <= 0.0001f) return current;
+  if (smoothTime < 0.005f) smoothTime = 0.005f;
+
+  float diff = target - current;
+  while (diff > 180.0f) diff -= 360.0f;
+  while (diff < -180.0f) diff += 360.0f;
+
+  float omega = 2.0f / smoothTime;
+  float x = omega * dt;
+  float expFactor = 1.0f / (1.0f + x + 0.48f * x * x + 0.235f * x * x * x);
+
+  float change = diff;
+  float originalTo = target;
+
+  float maxChange = maxSpeed * smoothTime;
+  change = constrain(change, -maxChange, maxChange);
+  target = current + change;
+
+  float temp = (currentVelocity + omega * change) * dt;
+  currentVelocity = (currentVelocity - omega * temp) * expFactor;
+  float output = target - change + (change + temp) * expFactor;
+
+  if ((originalTo - current > 0.0f) == (output > originalTo)) {
+    output = originalTo;
+    currentVelocity = (output - originalTo) / dt;
+  }
+
+  float step = output - current;
+  while (step > 180.0f) step -= 360.0f;
+  while (step < -180.0f) step += 360.0f;
+  const float maxFrameAngle = 1.5f;
+  step = constrain(step, -maxFrameAngle, maxFrameAngle);
+  output = current + step;
+
+  while (output >= 360.0f) output -= 360.0f;
+  while (output < 0.0f) output += 360.0f;
+  return output;
+}
+
+// 缩放倍率 HUD 浮层 (双击按住拖拽或微调时显示)
+void drawMapZoomHint(uint32_t now) {
+  if (now >= mapZoomHintUntil) return;
+  int cardW = 120, cardH = 34;
+  int cardX = CX - cardW / 2;
+  int cardY = 285;
+  uint16_t borderCol = mapZoomActive ? 0x07E0 : 0x4A69; // 正在操作时边框高亮绿色
+  gfx->fillRoundRect(cardX, cardY, cardW, cardH, 8, 0x18C3);
+  gfx->drawRoundRect(cardX, cardY, cardW, cardH, 8, borderCol);
+  
+  char buf[20];
+  snprintf(buf, sizeof(buf), "ZOOM %.1fx", userMapScale);
+  gfx->setTextSize(2);
+  gfx->setTextColor(0xFFFF);
+  gfx->setCursor(cardX + 10, cardY + 9);
+  gfx->print(buf);
+}
+
+// 实心多边形（扫描线，奇偶规则，带亚像素边缘抗锯齿）
 void mapFillPoly(const float *xs, const float *ys, int n, uint16_t c) {
   if (n < 3) return;
   float ymin = 1e9f, ymax = -1e9f, xmin = 1e9f, xmax = -1e9f;
@@ -1473,6 +1538,7 @@ void mapFillPoly(const float *xs, const float *ys, int n, uint16_t c) {
   if (ymax < 0 || ymin >= LCD_HEIGHT || xmax < 0 || xmin >= LCD_WIDTH) return;
   int y0 = max(0, (int)ceilf(ymin - 0.5f)), y1 = min(LCD_HEIGHT - 1, (int)floorf(ymax - 0.5f));
   static float xs_hit[256];
+  uint16_t *fb = gfx->getFramebuffer();
   for (int y = y0; y <= y1; y++) {
     float sy = y + 0.5f;
     int k = 0;
@@ -1487,9 +1553,32 @@ void mapFillPoly(const float *xs, const float *ys, int n, uint16_t c) {
       while (b >= 0 && xs_hit[b] > v) { xs_hit[b + 1] = xs_hit[b]; b--; }
       xs_hit[b + 1] = v;
     }
+    uint16_t *row = fb + y * LCD_WIDTH;
     for (int a = 0; a + 1 < k; a += 2) {
-      int xa = max(0, (int)ceilf(xs_hit[a] - 0.5f)), xb = min(LCD_WIDTH - 1, (int)floorf(xs_hit[a + 1] - 0.5f));
-      if (xb >= xa) gfx->drawFastHLine(xa, y, xb - xa + 1, c);
+      float xL = xs_hit[a], xR = xs_hit[a + 1];
+      if (xR <= xL) continue;
+      int pL = (int)floorf(xL);
+      int pR = (int)floorf(xR);
+      if (pL == pR) {
+        if (pL >= 0 && pL < LCD_WIDTH) {
+          int alpha = (int)((xR - xL) * 256.0f + 0.5f);
+          if (alpha > 0) row[pL] = blendF(row[pL], c, alpha);
+        }
+      } else {
+        if (pL >= 0 && pL < LCD_WIDTH) {
+          int alphaL = (int)(((float)(pL + 1) - xL) * 256.0f + 0.5f);
+          if (alphaL > 0) row[pL] = blendF(row[pL], c, alphaL);
+        }
+        int solidL = max(0, pL + 1);
+        int solidR = min(LCD_WIDTH - 1, pR - 1);
+        if (solidR >= solidL) {
+          gfx->drawFastHLine(solidL, y, solidR - solidL + 1, c);
+        }
+        if (pR >= 0 && pR < LCD_WIDTH) {
+          int alphaR = (int)((xR - (float)pR) * 256.0f + 0.5f);
+          if (alphaR > 0) row[pR] = blendF(row[pR], c, alphaR);
+        }
+      }
     }
   }
 }
@@ -2434,30 +2523,38 @@ void drawMapFrame() {
     float f = fmaxf(0, 1 - (t - corrAt) / 400.0f);
     cx += corrX * f; cy += corrY * f;
   }
-  // 朝向平滑转动，缩放跟车速（越快看得越远）
+  // 朝向平滑转动（二阶临界阻尼平滑跟踪，消除顿挫与撕裂）
   if (!viewInit) { viewHdg = hPred; viewInit = true; }
-  float dh = hPred - viewHdg;
-  while (dh > 180) dh -= 360;
-  while (dh < -180) dh += 360;
-  // v3.7 按时间平滑转动（和帧率无关）：时间常数 0.35 秒，最快每秒转 70 度。
-  //      每一帧之间画面变化更小、更均匀，转弯时的撕裂感会轻很多（这块板子没接屏幕的刷新同步信号，
-  //      没法从硬件上完全消除撕裂，只能让相邻两帧尽量接近）
   static unsigned long lastViewAt = 0;
-  float vdt = lastViewAt ? (t - lastViewAt) / 1000.0f : 0.05f;
+  float vdt = lastViewAt ? (t - lastViewAt) / 1000.0f : 0.04f;
   lastViewAt = t;
-  if (vdt > 0.25f) vdt = 0.25f;
-  float hstep = dh * (1.0f - expf(-vdt / 0.22f));       // v6.7 0.35 → 0.22 秒：追得更紧
-  float hmax = fminf(70.0f * vdt, 3.5f);                // v6.0 每帧最多转 3.5°（防撕裂）
-  if (hstep > hmax) hstep = hmax;
-  if (hstep < -hmax) hstep = -hmax;
-  viewHdg += hstep;
+  if (vdt > 0.20f) vdt = 0.20f;
+  if (vdt < 0.005f) vdt = 0.005f;
+
+  float prevHdg = viewHdg;
+  viewHdg = smoothAngleDamp(viewHdg, hPred, viewHdgVel, 0.18f, 95.0f, vdt);
+  // 转弯动态高频刷新：当视角仍在旋转时主动维持连续渲染，杜绝掉帧与扫描撕裂
+  if (fabsf(viewHdgVel) > 0.3f || fabsf(viewHdg - prevHdg) > 0.05f) {
+    navDirty = true;
+  }
+
   const bool dragon = styleIdx() == ST_DRAGON;
   bool vecOK = !dragon && mapValid && mapFrame == posFrame;
   bool rasOK = !dragon && rasterValid && rasterFrame == posFrame;
-  bool useRaster = rasOK && (!vecOK || rasterAt >= vectorAt);   // v2.5 两种都有时用最新收到的
-  // 图片地图每像素 2 米，放太大会显得粗糙，所以最大放大倍数小一些
-  float targetS = constrain(0.85f - posKmh * 0.006f, 0.38f, useRaster ? 0.6f : 0.85f);
-  viewScale += (targetS - viewScale) * (1.0f - expf(-vdt / 1.2f));   // v3.7 缩放也按时间平滑
+  bool useRaster = rasOK && (!vecOK || rasterAt >= vectorAt);
+
+  // 基础缩放比例与车速放缓动态叠加：
+  // 用户基础缩放（以 0.85 为 1.0x 标准基准）
+  float baseS = 0.85f * userMapScale;
+  if (useRaster && baseS > 0.60f) baseS = 0.60f;
+  // 车速放缓叠加系数：车速放缓为 0 时倍率最高(1.0f)，高速行驶时平滑拉远拓展视野(最低约 0.45f)
+  float speedFactor = constrain(1.0f - (posKmh > 0 ? posKmh : 0) * (0.006f / 0.85f), 0.45f, 1.0f);
+  float targetS = constrain(baseS * speedFactor, 0.18f, 2.50f);
+  if (mapZoomActive) {
+    viewScale = targetS; // 双击按住滑动缩放时：实时贴手无延迟！
+  } else {
+    viewScale += (targetS - viewScale) * (1.0f - expf(-vdt / 0.8f));
+  }
   float sc = viewScale, hs = viewHdg * PI / 180, cs = cosf(hs), sn = sinf(hs);
   float viewR = (CX + (effectiveMapPy - CX) + 30) / sc;
 
@@ -2557,6 +2654,7 @@ void drawMapFrame() {
   drawTrafficLightLab(millis());                        // 红绿灯竖排卡片
   profMark(10);
   drawJunctionCrossCard(crossProgress);
+  drawMapZoomHint(t);                                    // 双击缩放提示卡片
   // v2.9 小地图里不画顶部的蓝牙小圆点（会和 N 标记重叠；能收到地图就说明连着）
   needFlush = true;
   mapFrames++;

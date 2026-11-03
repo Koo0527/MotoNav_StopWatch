@@ -405,6 +405,8 @@ void setup() {
     bootBrand = BootAnimation::valid(pr.getInt("bootbrand", 0));
     hidMusicMode = pr.getBool("mediahid", false);
     fastFlushOn = pr.getBool("fastf", true);
+    userMapScale = pr.getFloat("mapzoom", 1.0f);
+    if (userMapScale < 0.4f || userMapScale > 2.5f || isnan(userMapScale)) userMapScale = 1.0f;
     pr.end();
     if (qspiMHz != 40 && qspiMHz != 60 && qspiMHz != 80) qspiMHz = 40;
   }
@@ -583,6 +585,7 @@ void loop() {
   static unsigned long mediaDrawAt = 0;
   if (hidMusicMode && appleMedia.available && millis() - mediaDrawAt >= 1000) { mediaDrawAt = millis(); musicDirty = true; }
   saveRotIfDue();                                      // v6.4
+  saveMapZoomIfDue();
   // v6.5 连上 60 秒还没通过验证（不是自己的手机）：断开，让自己的手机能连
 #if defined(CONFIG_NIMBLE_ENABLED)
   if (bleConnected && !bleAuthed && bleConnHandle != 0xFFFF && millis() - bleConnAt > AUTH_TIMEOUT_MS) {

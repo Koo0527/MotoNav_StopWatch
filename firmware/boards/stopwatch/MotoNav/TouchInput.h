@@ -277,6 +277,19 @@ void touchPoll() {
       touchHoldAt = now;
       touchX0 = touchX1 = x[0]; touchY0 = touchY1 = y[0];
       pendingEvt = "T,P," + String(x[0]) + "," + String(y[0]);
+      // 导航地图页面：双击按住缩放检测
+      if (page == 0 && (inNav || cruiseOn || mapModeActive()) && !callOn && !pairOn && !fxOn) {
+        if (lastMapTapAt > 0 && (now - lastMapTapAt <= 420) &&
+            abs(x[0] - lastMapTapX) <= 65 && abs(y[0] - lastMapTapY) <= 65) {
+          mapZoomActive = true;
+          touchEat = true;
+          mapZoomStartY = y[0];
+          mapZoomStartScale = userMapScale;
+          mapZoomHintUntil = now + 2500;
+          lastMapTapAt = 0;
+          CompanionMode::startVibration(70, 30);
+        }
+      }
       if (page == 2 && !callOn && !pairOn) {
         float tdx = x[0] - CX, tdy = y[0] - CX;
         touchVectorToCanvas(tdx, tdy);
@@ -358,6 +371,17 @@ void touchPoll() {
       }
     }
 
+    if (mapZoomActive) {
+      touchEat = true;
+      float vx = 0, vy = touchY1 - mapZoomStartY;
+      touchVectorToCanvas(vx, vy);
+      float dy = vy; // 在屏幕画布方向：dy < 0 向上滑放大，dy > 0 向下滑缩小
+      float delta = -dy * (1.0f / 140.0f);
+      userMapScale = constrain(mapZoomStartScale + delta, 0.40f, 2.50f);
+      mapZoomHintUntil = now + 2000;
+      navDirty = true;
+    }
+
     if (callOn || pairOn || touchEat || fxOn) dragAbort();
     else dragMove(touchX1 - touchX0, touchY1 - touchY0, now);
   } else if (touchDown && now - touchLastSeen > 70) {
@@ -365,6 +389,22 @@ void touchPoll() {
     unsigned long pressDuration = now - touchHoldAt;
     touchHoldAt = 0;
     calibTriggered = false;
+    if (mapZoomActive) {
+      mapZoomActive = false;
+      touchEat = true;
+      mapZoomSaveAt = now + 1500;
+      mapZoomHintUntil = now + 1200;
+      CompanionMode::startVibration(90, 35);
+      navDirty = true;
+    } else if (page == 0 && (inNav || cruiseOn || mapModeActive()) && !callOn && !pairOn && !fxOn) {
+      float vx = touchX1 - touchX0, vy = touchY1 - touchY0;
+      touchVectorToCanvas(vx, vy);
+      if (pressDuration >= 20 && pressDuration < 340 && abs(vx) <= 30 && abs(vy) <= 30) {
+        lastMapTapAt = now;
+        lastMapTapX = touchX0;
+        lastMapTapY = touchY0;
+      }
+    }
     if (page == 2 && volSliding) {
       volSliding = false;
       volActiveUntil = now + 1500;
