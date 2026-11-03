@@ -204,67 +204,109 @@ static inline void drawRockstarStar(int cx, int cy, float outerR, float innerR, 
   }
 }
 
-// 4. 罪恶都市风格地图背景生成 (完美复刻 App 截图：暖沙色街区、青绿水面、粉紫路线，半透明暗化融合)
-static inline void drawViceCityBackground() {
+// 4. 动态主题地图背景生成 (根据用户选择的地图主题 themeIdx 和 nightOn，动态呈现对应风格的精美地图底图)
+static inline void drawThemedMapBackground() {
   uint16_t *fb = gfx->getFramebuffer();
   if (!fb) return;
   const int W = LCD_WIDTH;  // 466
   const int H = LCD_HEIGHT; // 466
 
-  // 1. 基础底色：暖沙色街区地面 (THEMES[1].block = 0xE6D9)
-  const uint16_t c_sand  = 0xE6D9;
-  const uint16_t c_road  = 0x3187;
-  const uint16_t c_park  = 0x760D;
-  const uint16_t c_water = 0x4E3B;
-  const uint16_t c_route = 0xF258;
-  const uint16_t c_node  = 0x78EC;
+  int tid = constrain(themeIdx, 0, THEME_N - 1);
+  const MapTheme &th = (nightOn ? THEMES_NIGHT : THEMES)[tid];
 
-  gfx->fillScreen(c_sand);
+  uint16_t c_block = th.block;
+  uint16_t c_road  = th.road;
+  uint16_t c_park  = th.park;
+  uint16_t c_water = th.water;
+  uint16_t c_route = th.route;
+  uint16_t c_node  = th.route2 ? th.route2 : th.route;
+  uint16_t c_blip  = th.blip ? th.blip : C_WHITE;
 
-  // 2. 左侧蜿蜒水面 / 河流 (青绿水系 0x4E3B)
-  for (int y = 0; y < H; y++) {
-    float ny = (float)y / 466.0f;
-    int wx = (int)(78 + 32.0f * sinf(ny * 3.14159f * 1.5f));
-    int x0 = max(0, wx - 22);
-    int x1 = min(W - 1, wx + 22);
-    for (int x = x0; x <= x1; x++) {
-      fb[y * W + x] = c_water;
+  // 1. 基础地面底色填充
+  gfx->fillScreen(c_block);
+
+  // 特殊主题附加几何元素
+  if (tid == ST_DRAGON) {
+    // 龙珠雷达：绿色同心网格圆与十字基准线
+    uint16_t gridCol = 0x04A0;
+    gfx->drawCircle(CX, CX, 72, gridCol);
+    gfx->drawCircle(CX, CX, 142, gridCol);
+    gfx->drawCircle(CX, CX, 206, gridCol);
+    gfx->drawFastHLine(0, CX, W, gridCol);
+    gfx->drawFastVLine(CX, 0, H, gridCol);
+    aaDisc((float)(CX + 62), (float)(CX - 56), 6.5f, 0xFFE0);
+    aaDisc((float)(CX - 78), (float)(CX + 48), 6.5f, 0xFFE0);
+  } else if (tid == ST_BLUEPRINT) {
+    // 蓝图：工程图纸微细白色方格
+    for (int x = 22; x < W; x += 26) gfx->drawFastVLine(x, 0, H, 0x1A94);
+    for (int y = 22; y < H; y += 26) gfx->drawFastHLine(0, y, W, 0x1A94);
+  } else if (tid == ST_RADAR) {
+    // 雷达模式：极坐标同心刻度圆
+    uint16_t rCol = 0x0B80;
+    gfx->drawCircle(CX, CX, 75, rCol);
+    gfx->drawCircle(CX, CX, 150, rCol);
+    gfx->drawCircle(CX, CX, 210, rCol);
+  }
+
+  // 2. 左侧蜿蜒水面 / 河流 (仅在主题具有独立水体色且非零时绘制)
+  if (c_water != 0 && c_water != c_block) {
+    for (int y = 0; y < H; y++) {
+      float ny = (float)y / 466.0f;
+      int wx = (int)(78 + 32.0f * sinf(ny * 3.14159f * 1.5f));
+      int x0 = max(0, wx - 22);
+      int x1 = min(W - 1, wx + 22);
+      for (int x = x0; x <= x1; x++) {
+        fb[y * W + x] = c_water;
+      }
     }
   }
 
-  // 3. 街区公园绿地 (草绿色 0x760D)
-  gfx->fillRect(140, 70, 52, 44, c_park);
-  gfx->fillRect(276, 268, 64, 52, c_park);
-  gfx->fillRect(160, 360, 48, 38, c_park);
-
-  // 4. 纵横深色道路网格 (深灰黑街道 0x3187，线宽 4px)
-  for (int x = 42; x < W; x += 48) {
-    gfx->fillRect(x - 2, 0, 4, H, c_road);
-  }
-  for (int y = 42; y < H; y += 48) {
-    gfx->fillRect(0, y - 2, W, 4, c_road);
+  // 3. 街区公园绿地 (仅在主题具有独立绿地色且非零时绘制)
+  if (c_park != 0 && c_park != c_block && c_park != c_water) {
+    gfx->fillRect(140, 70, 52, 44, c_park);
+    gfx->fillRect(276, 268, 64, 52, c_park);
+    gfx->fillRect(160, 360, 48, 38, c_park);
   }
 
-  // 5. 导航行车历史轨迹 (深灰色线)
-  gfx->fillRect(CX - 1, 280, 3, 140, 0x4208);
+  // 4. 纵横深色街道网格 (线宽 4px)
+  if (c_road != 0 && c_road != c_block) {
+    for (int x = 42; x < W; x += 48) {
+      gfx->fillRect(x - 2, 0, 4, H, c_road);
+    }
+    for (int y = 42; y < H; y += 48) {
+      gfx->fillRect(0, y - 2, W, 4, c_road);
+    }
+  }
 
-  // 6. 荧光粉紫导航路线 (0xF258，线宽 6px，路口直角转弯)
-  // 纵向段：从 Y=280 向上延伸至 Y=186
-  gfx->fillRect(CX - 3, 186, 6, 94, c_route);
-  // 横向段：从 X=233 向右延伸至 X=378
-  gfx->fillRect(CX - 3, 183, 148, 6, c_route);
-  // 转弯路口粉紫小圆环节点
-  aaDisc((float)CX, 186.0f, 6.0f, c_node);
-  aaDisc((float)CX, 186.0f, 3.0f, c_route);
+  // 5. 导航行车历史轨迹 (深灰色线 / 主题次要路线)
+  uint16_t c_trail = th.done ? th.done : 0x4208;
+  gfx->fillRect(CX - 1, 280, 3, 140, c_trail);
 
-  // 7. 自车定位航向箭头 (Blip：白色三角车标，带黑色边框，朝向路线前方)
+  // 6. 导航路线 (使用当前主题指定的 route 颜色与 node 颜色，线宽 6px，路口直角转弯)
+  if (c_route != 0) {
+    // 纵向段：从 Y=280 向上延伸至 Y=186
+    gfx->fillRect(CX - 3, 186, 6, 94, c_route);
+    // 横向段：从 X=233 向右延伸至 X=378
+    gfx->fillRect(CX - 3, 183, 148, 6, c_route);
+    // 转弯路口外圈小圆环节点
+    aaDisc((float)CX, 186.0f, 6.0f, c_node);
+    aaDisc((float)CX, 186.0f, 3.0f, c_route);
+  }
+
+  // 7. 自车定位航向箭头 (Blip：采用主题专属车标色与黑色外框，朝向路线前方)
   const int blipX = CX;
   const int blipY = 276;
   gfx->fillTriangle(blipX, blipY - 14, blipX - 8, blipY + 6, blipX + 8, blipY + 6, C_BLACK);
-  gfx->fillTriangle(blipX, blipY - 11, blipX - 6, blipY + 4, blipX + 6, blipY + 4, C_WHITE);
+  gfx->fillTriangle(blipX, blipY - 11, blipX - 6, blipY + 4, blipX + 6, blipY + 4, c_blip);
   gfx->fillTriangle(blipX, blipY - 1, blipX - 4, blipY + 4, blipX + 4, blipY + 4, C_BLACK);
 
-  // 8. 半透明暗化处理 (与纯黑做 50% 优雅混叠，外圈加雷达暗角 Vignette，绝无色彩通道溢出)
+  // 8. 半透明暗化与暗角融合 (针对不同明暗底色自适应，外圈平滑暗角)
+  uint32_t r_b = (c_block >> 11) & 0x1F;
+  uint32_t g_b = (c_block >> 5) & 0x3F;
+  uint32_t b_b = c_block & 0x1F;
+  uint32_t lum = r_b * 8 + g_b * 4 + b_b * 8; // 0 ~ 500
+  uint32_t baseRatio = (lum > 180) ? 118 : 205; // 亮色底暗化至 46%，深色底保留 80%
+
   for (int y = 0; y < H; y++) {
     int dy = y - H / 2;
     uint16_t *row = &fb[y * W];
@@ -273,13 +315,12 @@ static inline void drawViceCityBackground() {
       int r2 = dx * dx + dy * dy;
 
       uint16_t c = row[x];
-      // 基础半透明暗化系数：约 46% (118/256)
-      uint32_t ratio = 118;
+      uint32_t ratio = baseRatio;
 
-      // 圆屏边缘 180px 外渐变黑色暗角晕轮
-      if (r2 > 180 * 180) {
-        int dist = (int)sqrtf((float)r2) - 180;
-        int vignette = max(0, 118 - dist * 2);
+      // 圆屏边缘 175px 外渐变黑色暗角晕轮 (Vignette)
+      if (r2 > 175 * 175) {
+        int dist = (int)sqrtf((float)r2) - 175;
+        int vignette = max(0, (int)baseRatio - dist * 3);
         ratio = (uint32_t)vignette;
       }
 
@@ -290,5 +331,10 @@ static inline void drawViceCityBackground() {
       row[x] = (uint16_t)((r << 11) | (g << 5) | b);
     }
   }
+}
+
+// 兼容别名
+static inline void drawViceCityBackground() {
+  drawThemedMapBackground();
 }
 

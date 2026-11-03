@@ -214,6 +214,12 @@ void handleText(const String &m) {
         }
       }
       themeIdx = t; navDirty = true;
+      if (page == 0 && !inNav) drawWaiting(waitSt);
+      Preferences pr;
+      if (pr.begin("motonav", false)) {
+        pr.putInt("maptheme", themeIdx);
+        pr.end();
+      }
     }   // v7.8.11 0~11
     return;
   }

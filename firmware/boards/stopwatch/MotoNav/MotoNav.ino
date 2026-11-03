@@ -405,6 +405,8 @@ void setup() {
     bootBrand = BootAnimation::valid(pr.getInt("bootbrand", 0));
     hidMusicMode = pr.getBool("mediahid", false);
     fastFlushOn = pr.getBool("fastf", true);
+    themeIdx = pr.getInt("maptheme", 1);
+    if (themeIdx < 0 || themeIdx >= THEME_N) themeIdx = 1;
     userMapScale = pr.getFloat("mapzoom", 1.0f);
     if (userMapScale < 0.4f || userMapScale > 2.5f || isnan(userMapScale)) userMapScale = 1.0f;
     pr.end();

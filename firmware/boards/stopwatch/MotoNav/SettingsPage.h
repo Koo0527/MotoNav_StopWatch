@@ -14,7 +14,11 @@ static const char* const brightnessLabels[] = {"25%", "50%", "75%", "100%"};
 static int brightnessIdx = 2; // 默认 75% (192)
 
 // 2. 地图主题样式
-static const char* const mapStyleLabels[] = {"VICE", "DARK", "CLEAN", "RADAR"};
+static const char* const mapStyleLabels[THEME_N] = {
+  "CLASSIC", "VICE CITY", "GTA5", "CYBER",
+  "PAPER", "MINIMAL", "BLUEPRINT", "PIXEL",
+  "RADAR", "COMPASS", "SATELLITE", "DRAGON"
+};
 extern int themeIdx;
 
 // 3. 屏幕旋转角度 (0°, 90°, 180°, 270°)
@@ -115,7 +119,7 @@ void drawSettingsPage() {
     uint16_t accent;
   } cards[4] = {
     {leftX,  topY, 0, "BRIGHTNESS", brightnessLabels[brightnessIdx], 0xFDE0},
-    {rightX, topY, 1, "MAP STYLE",  mapStyleLabels[themeIdx % 4],    0x4ECB},
+    {rightX, topY, 1, "MAP STYLE",  mapStyleLabels[themeIdx % THEME_N], 0x4ECB},
     {leftX,  botY, 2, "ROTATION",   rotationLabels[rotationIdx],     0x29ED},
     {rightX, botY, 3, "AUTO SLEEP", sleepLabels[sleepIdx],           0xAFBD}
   };
@@ -192,7 +196,7 @@ void settingsPageTap(int x, int y) {
       break;
     }
     case 1: { // 地图风格切换
-      themeIdx = (themeIdx + 1) % 4;
+      themeIdx = (themeIdx + 1) % THEME_N;
       Preferences pr;
       if (pr.begin("motonav", false)) {
         pr.putInt("maptheme", themeIdx);

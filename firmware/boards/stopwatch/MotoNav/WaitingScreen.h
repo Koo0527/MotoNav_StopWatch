@@ -136,7 +136,7 @@ void drawWaiting(int st) {
   onWaitScreen = true;
 
   // 1. 绘制正宗罪恶都市风格地图背景 (暖沙色街区、青绿水面、公园绿地、粉紫路线与车标，半透明暗化)
-  drawViceCityBackground();
+  drawThemedMapBackground();
 
   // 2. 顶部大号原生电池图标 (彻底恢复 Stopwatch 52x24 经典原版样式，内嵌电量数字，充电带闪电)
   extern void drawBattery(int x0, int y0, bool backing = false);

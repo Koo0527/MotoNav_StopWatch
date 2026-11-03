@@ -2,6 +2,11 @@
 #include <Arduino.h>
 #include "AppleMediaClient.h"
 #include "HidMediaKeys.h"
+#include "MapThemes.h"
+int themeIdx = 1;                                  // 默认罪恶都市
+bool nightOn = false;                              // 夜间配色
+bool curveOn = false;                              // 弯道急缓上色
+int trailMode = 1;                                 // 走过的路线
 
 // ===== 颜色（RGB565）=====
 #define C_BLACK  0x0000
