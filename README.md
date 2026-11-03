@@ -10,7 +10,7 @@
 ## 快速上手与固件获取
 
 ### 1. 固件烧录（推荐 M5Burner）
-- **推荐方式**：本项目固件已发布至 **[M5Burner](https://m5stack.com/pages/download)**，在 M5Burner 中搜索 `MotoNav` 或 `Stopwatch` 即可一键下载并烧录到 M5Stopwatch。
+- **推荐方式**：本项目固件已发布至 **[M5Burner](https://burner.m5stack.com)**，在 M5Burner 中搜索 `MotoNav` 或 `Stopwatch` 即可一键下载并烧录到 M5Stopwatch。
 - **开发者源码编译**：本项目固件使用 PlatformIO 开发，环境为 ESP32-S3：
   ```bash
   pio run -e stopwatch -t upload
