@@ -23,6 +23,20 @@ float rotCosF = 1, rotSinF = 0;
 unsigned long rotSaveAt = 0;              // v6.4 角度停下后过一会儿再存进板子
 int16_t rotSpan[LCD_HEIGHT];              // v6.4 每一行圆里面的半宽（圆外面的像素直接涂黑）
 
+// 连续浮点角度随动推屏（用于重力感应校准时流体般平滑连续旋转）
+void setScreenDegFloat(float deg, bool save = false) {
+  while (deg >= 360.0f) deg -= 360.0f;
+  while (deg < 0.0f) deg += 360.0f;
+  screenDeg = (int)lroundf(deg);
+  rotFree = true;
+  screenRot = 0;
+  float a = deg * (float)M_PI / 180.0f;
+  rotCosF = cosf(a); rotSinF = sinf(a);
+  rotCos = (int32_t)lroundf(rotCosF * 65536.0f);
+  rotSin = (int32_t)lroundf(rotSinF * 65536.0f);
+  if (save) rotSaveAt = millis() + 1500;
+}
+
 // v6.4 设定圆屏角度。save = true：稍后存进板子
 void setScreenDeg(int d, bool save) {
   d = ((d % 360) + 360) % 360;

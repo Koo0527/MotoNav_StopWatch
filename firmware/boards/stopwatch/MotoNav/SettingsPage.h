@@ -8,6 +8,7 @@
 extern int qspiMHz;
 extern int screenRot;
 extern void setScreenDeg(int deg, bool save);
+extern void setScreenDegFloat(float deg, bool save);
 
 // 1. 亮度设置 (25%, 50%, 75%, 100%)
 static const uint8_t brightnessLevels[] = {64, 128, 192, 255};
@@ -87,11 +88,52 @@ static inline const char* getThemeDisplayLabel() {
   return "VICE CITY";
 }
 
-// 重力感应屏幕旋转动态刷新（在 loop 中持续调度）
+// 绘制重力感应旋转校准界面（高帧率超流畅：横跨屏幕水平线 + 垂直地面垂线 + 实时角度指示）
+void drawRotationCalibPage() {
+  onWaitScreen = false;
+  frameIsMap = false;
+
+  // 1. 沉稳纯黑背景
+  gfx->fillScreen(C_BLACK);
+
+  // 2. 横跨屏幕的水平基准线（长度为圆屏直径 466px，通过正中心 Y=CX，罪恶都市经典柔和绿 0x760D）
+  const uint16_t c_line = 0x760D;
+  gfx->fillRect(0, CX - 1, LCD_WIDTH, 2, c_line);
+
+  // 3. 水平线中间下方垂直地面的线（长度为圆屏半径 233px，从 (CX, CX) 向下垂直延伸至屏幕底部）
+  // 两条线呈 90 度垂直相交
+  gfx->fillRect(CX - 1, CX, 2, CX, c_line);
+
+  // 4. 中心相交点精致小圆心
+  aaDisc((float)CX, (float)CX, 4.5f, c_line);
+  aaDisc((float)CX, (float)CX, 2.0f, C_BLACK);
+
+  // 5. 旋转角度数字显示：在水平线中间上方（大号抗锯齿平滑字体）
+  int curAngle = (int)lroundf(autoRotAngleSmoothed);
+  curAngle = ((curAngle % 360) + 360) % 360;
+  char degBuf[16];
+  snprintf(degBuf, sizeof(degBuf), "%d*", curAngle);
+  drawAaString((float)CX, (float)(CX - 36), degBuf, 3.2f, 1.8f, 22.0f, C_WHITE, true);
+
+  // 6. 顶部与底部极简提示
+  // 顶部：AUTO ROTATE 状态指示
+  drawTranslucentRoundRect(CX - 72, 44, 144, 28, 14, 0x0000, 180);
+  gfx->drawRoundRect(CX - 72, 44, 144, 28, 14, 0x2965);
+  drawAaString((float)CX, 58.0f, "AUTO ROTATE", 1.4f, 0.85f, 9.5f, 0x8C71, true);
+
+  // 底部：TAP ANYWHERE TO LOCK 操作指引
+  drawTranslucentRoundRect(CX - 110, 396, 220, 30, 15, 0x0000, 180);
+  gfx->drawRoundRect(CX - 110, 396, 220, 30, 15, c_line);
+  drawAaString((float)CX, 411.0f, "TAP ANYWHERE TO LOCK", 1.3f, 0.8f, 9.0f, c_line, true);
+
+  needFlush = true;
+}
+
+// 重力感应屏幕旋转动态刷新（浮点级无阶梯顿挫，40 FPS 流体般自然旋转）
 inline void settingsUpdateAutoRot() {
   if (!settingsAutoRot || page != 1 || !LeanAngleMeter::available) return;
   unsigned long now = millis();
-  if (now - lastAutoRotCheck < 40) return; // 25 FPS 丝滑响应
+  if (now - lastAutoRotCheck < 25) return; // 40 FPS 超高频响应
   lastAutoRotCheck = now;
 
   LeanAngleMeter::imu.getSensorData();
@@ -101,7 +143,7 @@ inline void settingsUpdateAutoRot() {
   float aMag = sqrtf(ax * ax + ay * ay);
 
   // 只要屏幕有适当倾角（非水平平放于桌面上），实时随重力转动
-  if (aMag >= 0.20f) {
+  if (aMag >= 0.15f) {
     float rad = atan2f(ax, ay);
     float deg = rad * (180.0f / (float)M_PI);
     if (deg < 0) deg += 360.0f;
@@ -111,16 +153,15 @@ inline void settingsUpdateAutoRot() {
     while (diff > 180.0f) diff -= 360.0f;
     while (diff < -180.0f) diff += 360.0f;
 
-    float alpha = fabsf(diff) > 30.0f ? 0.50f : 0.25f;
+    // 动态平滑跟手：大角度快速跟随，小角度柔和滤除抖动
+    float alpha = fabsf(diff) > 25.0f ? 0.40f : 0.22f;
     autoRotAngleSmoothed += diff * alpha;
     while (autoRotAngleSmoothed >= 360.0f) autoRotAngleSmoothed -= 360.0f;
     while (autoRotAngleSmoothed < 0.0f) autoRotAngleSmoothed += 360.0f;
 
-    int newDeg = (int)lroundf(autoRotAngleSmoothed);
-    if (abs(newDeg - screenDeg) >= 2) {
-      setScreenDeg(newDeg, false);
-      settingsDirty = true;
-    }
+    // 浮点连续旋转推屏，彻底消除整数阶梯卡顿
+    setScreenDegFloat(autoRotAngleSmoothed, false);
+    drawRotationCalibPage();
   }
 }
 
@@ -128,6 +169,12 @@ inline void settingsUpdateAutoRot() {
 void drawSettingsPage() {
   onWaitScreen = false;
   frameIsMap = false;
+
+  // 若处于随动旋转模式，直接绘制流体旋转校准视图
+  if (settingsAutoRot) {
+    drawRotationCalibPage();
+    return;
+  }
 
   // 1. 绘制统一沉稳的暗黑磨砂背景
   gfx->fillScreen(C_BLACK);
@@ -152,41 +199,32 @@ void drawSettingsPage() {
   const int topY   = 94;
   const int botY   = topY + cardH + gapY;   // 218
 
-  // 格式化当前旋转角度显示
+  // 格式化当前锁定的整数角度
   char rotBuf[16];
-  if (settingsAutoRot) {
-    snprintf(rotBuf, sizeof(rotBuf), "LOCK *");
-  } else {
-    snprintf(rotBuf, sizeof(rotBuf), "%d*", screenDeg);
-  }
+  snprintf(rotBuf, sizeof(rotBuf), "%d*", screenDeg);
 
   struct CardConfig {
     int x, y;
     int iconId;
     const char *title;
     const char *val;
-    bool active;
   } cards[4] = {
-    {leftX,  topY, 0, "BRIGHTNESS", brightnessLabels[brightnessIdx], false},
-    {rightX, topY, 1, "MAP STYLE",  getThemeDisplayLabel(),          false},
-    {leftX,  botY, 2, "ROTATION",   rotBuf,                          settingsAutoRot},
-    {rightX, botY, 3, "AUTO SLEEP", sleepLabels[sleepIdx],           false}
+    {leftX,  topY, 0, "BRIGHTNESS", brightnessLabels[brightnessIdx]},
+    {rightX, topY, 1, "MAP STYLE",  getThemeDisplayLabel()},
+    {leftX,  botY, 2, "ROTATION",   rotBuf},
+    {rightX, botY, 3, "AUTO SLEEP", sleepLabels[sleepIdx]}
   };
 
   for (int i = 0; i < 4; i++) {
     int cx = cards[i].x;
     int cy = cards[i].y;
-    bool act = cards[i].active;
 
     // 极简深黑毛玻璃底座
     drawTranslucentRoundRect(cx, cy, cardW, cardH, 16, 0x0000, 190);
-    // 常态极细暗边框，激活状态(随动旋转中)呼吸柔和绿边框
-    uint16_t borderCol = act ? 0x760D : 0x2965;
-    gfx->drawRoundRect(cx, cy, cardW, cardH, 16, borderCol);
+    gfx->drawRoundRect(cx, cy, cardW, cardH, 16, 0x2965);
 
     // 图标 (居中偏上，冷银白)
-    uint16_t iconCol = act ? 0x760D : 0xDEFB;
-    drawSettingsIcon(cards[i].iconId, cx + cardW / 2, cy + 26, iconCol);
+    drawSettingsIcon(cards[i].iconId, cx + cardW / 2, cy + 26, 0xDEFB);
 
     // 标题文字 (克制冷灰色，极简抗锯齿字符)
     drawAaString(cx + cardW / 2, cy + 54, cards[i].title, 1.3f, 0.8f, 9.0f, 0x8C71, true);
@@ -197,16 +235,12 @@ void drawSettingsPage() {
     const int valPillX = cx + 16;
     const int valPillY = cy + 72;
     drawTranslucentRoundRect(valPillX, valPillY, valPillW, valPillH, 13, 0x0000, 160);
-    gfx->drawRoundRect(valPillX, valPillY, valPillW, valPillH, 13, act ? 0x760D : 0x31A6);
-    drawAaString(cx + cardW / 2, valPillY + 13, cards[i].val, 1.5f, 0.9f, 10.0f, act ? 0x760D : C_WHITE, true);
+    gfx->drawRoundRect(valPillX, valPillY, valPillW, valPillH, 13, 0x31A6);
+    drawAaString(cx + cardW / 2, valPillY + 13, cards[i].val, 1.5f, 0.9f, 10.0f, C_WHITE, true);
   }
 
   // 4. 底部极简操作提示
-  if (settingsAutoRot) {
-    drawAaString(CX, 386, "TILT TO ALIGN - TAP TO LOCK", 1.2f, 0.75f, 8.5f, 0x760D, true);
-  } else {
-    drawAaString(CX, 386, "TAP CARD TO CONFIGURE", 1.2f, 0.75f, 8.5f, 0x632C, true);
-  }
+  drawAaString(CX, 386, "TAP CARD TO CONFIGURE", 1.2f, 0.75f, 8.5f, 0x632C, true);
 
   // 5. 底部页面指示点
   drawPageDots();
@@ -217,6 +251,17 @@ void drawSettingsPage() {
 void settingsPageTap(int x, int y) {
   if (page != 1 || callOn || pairOn || sliding) return;
 
+  // 在调整角度模式下：用户按屏幕任意位置都立即锁定角度，自然贴合到整数角度
+  if (settingsAutoRot) {
+    settingsAutoRot = false;
+    int finalDeg = (int)lroundf(autoRotAngleSmoothed);
+    finalDeg = ((finalDeg % 360) + 360) % 360;
+    setScreenDeg(finalDeg, true);
+    CompanionMode::startVibration(70, 30);
+    drawSettingsPage();
+    return;
+  }
+
   const int cardW = 164;
   const int cardH = 108;
   const int gapX = 14;
@@ -225,15 +270,6 @@ void settingsPageTap(int x, int y) {
   const int rightX = CX + gapX / 2;
   const int topY   = 94;
   const int botY   = topY + cardH + gapY;
-
-  // 若此前处于随动旋转状态，用户点击屏幕（无论点击哪里）立即锁定当前角度
-  if (settingsAutoRot) {
-    settingsAutoRot = false;
-    setScreenDeg(screenDeg, true);
-    CompanionMode::startVibration(80, 30);
-    drawSettingsPage();
-    return;
-  }
 
   int clickedCard = -1;
   if (x >= leftX && x <= leftX + cardW) {
@@ -280,11 +316,12 @@ void settingsPageTap(int x, int y) {
       }
       break;
     }
-    case 2: { // 随重力感应转动模式启动
+    case 2: { // 点击进入重力旋转随动校准模式
       settingsAutoRot = true;
       autoRotAngleSmoothed = (float)screenDeg;
       lastAutoRotCheck = 0;
-      break;
+      drawRotationCalibPage();
+      return;
     }
     case 3: { // 待机休眠
       sleepIdx = (sleepIdx + 1) % 4;
