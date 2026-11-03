@@ -60,3 +60,4 @@ static inline int styleIdx() { return (nightOn && themeIdx == ST_PAPER) ? ST_NEO
 #define C_WATER  (TH.water)
 #define C_ROUTE  (TH.route)
 #define C_ROUTE2 (TH.route2)
+

@@ -385,6 +385,17 @@ void setup() {
   }
   Serial.printf("Reset reason=%d, sleep wake=%d\n", (int)esp_reset_reason(),
                 (int)esp_sleep_get_wakeup_cause());
+  // 开机预加载并生效当地时区 (默认东八区 +8 小时，优先使用 NVS 保存的时区)
+  long bootTzOffset = 28800;
+  {
+    Preferences pr;
+    if (pr.begin("motonav", true)) {
+      bootTzOffset = pr.getLong("tz_offset", 28800);
+      pr.end();
+    }
+  }
+  applyTimezone(bootTzOffset);
+
   Wire.begin(IIC_SDA, IIC_SCL);
   StopWatchBoard::init();   // StopWatch：M5IOE1 上电（屏电源/OLED复位/触摸复位），必须先于 touchInit/gfx->begin
   RtcRX8130::begin();

@@ -344,12 +344,27 @@ void handleText(const String &m) {
   if (m == "#o") { ghostN = 0; navDirty = true; return; }   // v4.4 不显示原路线
   if (m == "#WXRESET" || m.startsWith("#WX,") || m.startsWith("#W,")) { return; }   // v5.3 天气
   if (m.startsWith("#TIME,")) {
-    time_t ep = (time_t)strtoul(m.c_str() + 6, NULL, 10);
+    const char *p = m.c_str() + 6;
+    time_t ep = (time_t)strtoul(p, NULL, 10);
+    long offsetSec = 28800; // 默认东八区 +8小时 (中国当地时间)
+    const char *comma = strchr(p, ',');
+    if (comma) {
+      offsetSec = strtol(comma + 1, NULL, 10);
+      applyTimezone(offsetSec);
+      Preferences pr;
+      if (pr.begin("motonav", false)) {
+        pr.putLong("tz_offset", offsetSec);
+        pr.end();
+      }
+    } else {
+      applyTimezone(28800);
+    }
+
     if (ep <= 1700000000) {
-      const char* dt = strchr(m.c_str() + 6, '-');
+      const char* dt = strchr(p, '-');
       if (dt) {
         int y = 0, mon = 0, d = 0, h = 0, min = 0, s = 0;
-        if (sscanf(m.c_str() + 6, "%d-%d-%d %d:%d:%d", &y, &mon, &d, &h, &min, &s) >= 3) {
+        if (sscanf(p, "%d-%d-%d %d:%d:%d", &y, &mon, &d, &h, &min, &s) >= 3) {
           struct tm t = {0};
           t.tm_year = y - 1900;
           t.tm_mon = mon - 1;
@@ -357,7 +372,7 @@ void handleText(const String &m) {
           t.tm_hour = h;
           t.tm_min = min;
           t.tm_sec = s;
-          ep = mktime(&t);
+          ep = RtcRX8130::timegmUtc(&t) - offsetSec;
         }
       }
     }
@@ -365,6 +380,9 @@ void handleText(const String &m) {
       struct timeval tv = { .tv_sec = ep, .tv_usec = 0 };
       settimeofday(&tv, NULL);
       RtcRX8130::syncFromSystemTime();
+      if (page == 0 && !inNav) {
+        drawWaiting(waitSt);
+      }
     }
     return;
   }

@@ -24,6 +24,20 @@
 #define RX8130_FLAG_VLF   (1 << 1)
 #define RX8130_CTRL0_STOP (1 << 6)
 
+// 当地时区设置 (POSIX 规范，如东八区 offsetSec=28800 对应 UTC-8)
+static inline void applyTimezone(long offsetSec) {
+  int hours = offsetSec / 3600;
+  int mins = abs(offsetSec % 3600) / 60;
+  char tzStr[32];
+  if (mins > 0) {
+    snprintf(tzStr, sizeof(tzStr), "UTC%+d:%02d", -hours, mins);
+  } else {
+    snprintf(tzStr, sizeof(tzStr), "UTC%+d", -hours);
+  }
+  setenv("TZ", tzStr, 1);
+  tzset();
+}
+
 class RtcRX8130 {
 private:
   static uint8_t bcd2dec(uint8_t val) {
@@ -147,13 +161,32 @@ public:
     return ok;
   }
 
+  // 纯 UTC 纪元秒转换 (无时区污染)
+  static time_t timegmUtc(const struct tm *t) {
+    if (!t) return 0;
+    int year = t->tm_year + 1900;
+    int mon = t->tm_mon;
+    int mday = t->tm_mday;
+    int hour = t->tm_hour;
+    int min = t->tm_min;
+    int sec = t->tm_sec;
+    static const int daysBeforeMonth[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+    int y = year - 1970;
+    int leapYears = (year - 1969) / 4 - (year - 1901) / 100 + (year - 1601) / 400;
+    long days = y * 365 + leapYears + daysBeforeMonth[mon] + (mday - 1);
+    if (mon > 1 && ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0))) {
+      days++;
+    }
+    return (time_t)(days * 86400L + hour * 3600L + min * 60L + sec);
+  }
+
   // 同步 RTC 时间到 ESP32 系统时间 (用于开机离线恢复)
   static bool syncToSystemTime() {
     struct tm rtcTm;
     if (!getTime(&rtcTm)) return false;
 
-    time_t epoch = mktime(&rtcTm);
-    if (epoch < 0) return false;
+    time_t epoch = timegmUtc(&rtcTm);
+    if (epoch < 1700000000) return false;
 
     struct timeval tv = { .tv_sec = epoch, .tv_usec = 0 };
     settimeofday(&tv, NULL);
@@ -161,12 +194,12 @@ public:
     return true;
   }
 
-  // 同步当前系统时间到 RTC (在收到手机时间更新时调用)
+  // 同步当前系统时间到 RTC (始终将 UTC 写入硬件 RTC)
   static bool syncFromSystemTime() {
     time_t now = time(NULL);
-    if (now < 1700000000) return false; // 必须是合法现实时间
-    struct tm *local = localtime(&now);
-    return setTime(local);
+    if (now < 1700000000) return false;
+    struct tm *utc = gmtime(&now);
+    return setTime(utc);
   }
 };
 
