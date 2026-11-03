@@ -1447,7 +1447,8 @@ static float smoothAngleDamp(float current, float target, float &currentVelocity
   float step = output - current;
   while (step > 180.0f) step -= 360.0f;
   while (step < -180.0f) step += 360.0f;
-  const float maxFrameAngle = 1.5f;
+  // 放宽单帧角步长上限至 12°，彻底解决转弯迟缓、直道横走的问题
+  const float maxFrameAngle = 12.0f;
   step = constrain(step, -maxFrameAngle, maxFrameAngle);
   output = current + step;
 
@@ -2476,9 +2477,19 @@ void drawMapFrame() {
   if (vdt < 0.005f) vdt = 0.005f;
 
   float prevHdg = viewHdg;
-  viewHdg = smoothAngleDamp(viewHdg, hPred, viewHdgVel, 0.18f, 95.0f, vdt);
+  float hdgDiff = hPred - viewHdg;
+  while (hdgDiff > 180.0f) hdgDiff -= 360.0f;
+  while (hdgDiff < -180.0f) hdgDiff += 360.0f;
+
+  // 动态自适应极速跟转：
+  // 1. 转弯机动时（角度差大于 10°）：将 smoothTime 压缩至 0.08 秒，最大角速度提升至 280°/s，车身进入直道前瞬间对齐，决不再出现横着走！
+  // 2. 直道巡航微调时（角度差较小）：采用 0.16 秒平滑滤波，消除细微 GPS 抖动
+  float smoothTime = fabsf(hdgDiff) > 10.0f ? 0.08f : 0.16f;
+  float maxTurnSpeed = fabsf(hdgDiff) > 10.0f ? 280.0f : 120.0f;
+
+  viewHdg = smoothAngleDamp(viewHdg, hPred, viewHdgVel, smoothTime, maxTurnSpeed, vdt);
   // 转弯动态高频刷新：当视角仍在旋转时主动维持连续渲染，杜绝掉帧与扫描撕裂
-  if (fabsf(viewHdgVel) > 0.3f || fabsf(viewHdg - prevHdg) > 0.05f) {
+  if (fabsf(viewHdgVel) > 0.3f || fabsf(viewHdg - prevHdg) > 0.05f || fabsf(hdgDiff) > 1.0f) {
     navDirty = true;
   }
 

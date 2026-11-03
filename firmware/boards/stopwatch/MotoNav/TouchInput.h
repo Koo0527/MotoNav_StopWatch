@@ -279,8 +279,9 @@ void touchPoll() {
       pendingEvt = "T,P," + String(x[0]) + "," + String(y[0]);
       // 导航地图页面：双击按住缩放检测
       if (page == 0 && (inNav || cruiseOn || mapModeActive()) && !callOn && !pairOn && !fxOn) {
-        if (lastMapTapAt > 0 && (now - lastMapTapAt <= 420) &&
-            abs(x[0] - lastMapTapX) <= 65 && abs(y[0] - lastMapTapY) <= 65) {
+        // 双击时间窗口大幅放宽至 650ms，距离容差放宽至 90 像素，从容易按，绝不误触滑动
+        if (lastMapTapAt > 0 && (now - lastMapTapAt <= 650) &&
+            abs(x[0] - lastMapTapX) <= 90 && abs(y[0] - lastMapTapY) <= 90) {
           mapZoomActive = true;
           touchEat = true;
           mapZoomStartX = x[0];
@@ -386,7 +387,15 @@ void touchPoll() {
     }
 
     if (callOn || pairOn || touchEat || fxOn) dragAbort();
-    else dragMove(touchX1 - touchX0, touchY1 - touchY0, now);
+    else {
+      // 导航模式下：若在双击等待窗口期（650ms 内）且位移较小时，优先等待双击缩放，避免误触发切页拖动
+      bool inMap = (page == 0 && (inNav || cruiseOn || mapModeActive()));
+      if (inMap && lastMapTapAt > 0 && (now - lastMapTapAt <= 650) && abs(touchX1 - touchX0) < 45 && abs(touchY1 - touchY0) < 45) {
+        // 暂不触发换页拖动
+      } else {
+        dragMove(touchX1 - touchX0, touchY1 - touchY0, now);
+      }
+    }
   } else if (touchDown && now - touchLastSeen > 70) {
     touchDown = false;
     unsigned long pressDuration = now - touchHoldAt;
@@ -402,7 +411,8 @@ void touchPoll() {
     } else if (page == 0 && (inNav || cruiseOn || mapModeActive()) && !callOn && !pairOn && !fxOn) {
       float vx = touchX1 - touchX0, vy = touchY1 - touchY0;
       touchVectorToCanvas(vx, vy);
-      if (pressDuration >= 20 && pressDuration < 340 && abs(vx) <= 30 && abs(vy) <= 30) {
+      // 放宽轻触判定：按压时长放宽至 480ms，位移容差放宽至 48 像素
+      if (pressDuration >= 15 && pressDuration < 480 && abs(vx) <= 48 && abs(vy) <= 48) {
         lastMapTapAt = now;
         lastMapTapX = touchX0;
         lastMapTapY = touchY0;
