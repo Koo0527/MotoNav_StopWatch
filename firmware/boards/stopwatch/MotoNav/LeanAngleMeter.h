@@ -4,6 +4,9 @@
 #include <Wire.h>
 #include <Preferences.h>
 #include <SparkFun_BMI270_Arduino_Library.h>
+
+// 屏幕旋转全局三角量 (定义于 DisplayDriver.h)
+extern float rotCosF, rotSinF;
 #ifndef ST_MINIMAL
 #define ST_MINIMAL 5
 #endif
@@ -120,6 +123,12 @@ public:
   static unsigned long lastUpdate;
   static unsigned long calibSuccessUntil;
 
+  // 将物理屏幕平面的二维向量旋转投影变换至画布视觉直立坐标系 (严格适配屏幕任意旋转角)
+  static inline void toCanvasVectors(float raw_x, float raw_y, float &cx, float &cy) {
+    cx = raw_x * rotCosF + raw_y * rotSinF;
+    cy = -raw_x * rotSinF + raw_y * rotCosF;
+  }
+
   static bool begin() {
     // Stopwatch 板载 BMI270 位于内部 I2C (Wire), 地址 0x68
     if (imu.beginI2C(BMI2_I2C_PRIM_ADDR, Wire) != BMI2_OK) {
@@ -135,18 +144,20 @@ public:
 
     loadCalibration();
     if (!calibrated) {
-      // 快速采样初始重力向量 (映射为屏幕物理坐标)
-      float sy = 0, sx_neg = 0, sz = 0;
+      // 快速采样初始重力向量 (映射至画布视觉直立坐标系)
+      float axSum = 0, aySum = 0, azSum = 0;
       for (int i = 0; i < 5; i++) {
         imu.getSensorData();
-        sy     += imu.data.accelY;
-        sx_neg += -imu.data.accelX;
-        sz     += imu.data.accelZ;
+        float cx, cy;
+        toCanvasVectors(imu.data.accelY, -imu.data.accelX, cx, cy);
+        axSum += cx;
+        aySum += cy;
+        azSum += imu.data.accelZ;
         delay(6);
       }
-      float sNorm = sqrtf(sy*sy + sx_neg*sx_neg + sz*sz);
+      float sNorm = sqrtf(axSum*axSum + aySum*aySum + azSum*azSum);
       if (sNorm > 0.5f) {
-        updateBasisFromUp(sy, sx_neg, sz);
+        updateBasisFromUp(axSum, aySum, azSum);
       }
     }
     resetStats();
@@ -251,14 +262,16 @@ public:
   static bool calibrateZero() {
     if (!available) return false;
 
-    // 多次采样平滑当前安装状态下的重力向量 (转换为屏幕坐标系)
+    // 多次采样平滑当前安装状态下的重力向量 (实时投影变换至画布视觉直立坐标系)
     float axSum = 0, aySum = 0, azSum = 0;
     const int SAMPLES = 30;
     for (int i = 0; i < SAMPLES; i++) {
       imu.getSensorData();
-      axSum += imu.data.accelY;     // 屏幕 +X (3点钟方向向右)
-      aySum += -imu.data.accelX;    // 屏幕 +Y (12点钟方向向前)
-      azSum += imu.data.accelZ;     // 屏幕 +Z (垂直屏幕朝外)
+      float cx, cy;
+      toCanvasVectors(imu.data.accelY, -imu.data.accelX, cx, cy);
+      axSum += cx;
+      aySum += cy;
+      azSum += imu.data.accelZ;
       delay(8);
     }
     float ax = axSum / SAMPLES;
@@ -294,13 +307,18 @@ public:
     // 屏幕向右 (+X_scr, 3点钟方向) = +imu.data.accelY
     // 屏幕向前 (+Y_scr, 12点钟方向) = -imu.data.accelX
     // 屏幕朝天 (+Z_scr, 垂直屏幕向外) = +imu.data.accelZ
-    float ax = imu.data.accelY;
-    float ay = -imu.data.accelX;
-    float az = imu.data.accelZ;
+    float raw_ax = imu.data.accelY;
+    float raw_ay = -imu.data.accelX;
+    float az     = imu.data.accelZ;
 
-    float gx = imu.data.gyroY;
-    float gy = -imu.data.gyroX;
-    float gz = imu.data.gyroZ;
+    float raw_gx = imu.data.gyroY;
+    float raw_gy = -imu.data.gyroX;
+    float gz     = imu.data.gyroZ;
+
+    // 适配屏幕旋转：将物理读数实时投影变换至视觉直立系（画布坐标系）
+    float ax, ay, gx, gy;
+    toCanvasVectors(raw_ax, raw_ay, ax, ay);
+    toCanvasVectors(raw_gx, raw_gy, gx, gy);
 
     // 1. 若用户尚未手动锁定校准，静止时平滑自适应追踪当前安装放置姿态
     // (实现水平桌面平放与垂直立握无缝自适应，左右倾斜效果完全一致)
