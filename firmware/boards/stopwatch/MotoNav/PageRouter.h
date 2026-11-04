@@ -189,7 +189,8 @@ void dragMove(int dx, int dy, unsigned long now) {
   touchVectorToCanvas(vx, vy);
   dx = (int)lroundf(vx); dy = (int)lroundf(vy);
   if (!dragging) {
-    int threshold = page == 2 ? 36 : DRAG_START;
+    // 地图主页提高起步门槛至 42 像素，防止轻微手抖/指腹接触误触发页面拖拽
+    int threshold = page == 2 ? 36 : (page == 0 ? 42 : DRAG_START);
     if (abs(dx) < threshold && abs(dy) < threshold) return;
     dragHoriz = abs(dx) >= abs(dy);
     int d = dragHoriz ? dx : dy;

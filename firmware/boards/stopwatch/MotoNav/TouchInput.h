@@ -284,9 +284,9 @@ void touchPoll() {
       pendingEvt = "T,P," + String(x[0]) + "," + String(y[0]);
       // 导航地图页面：双击按住缩放检测
       if (page == 0 && (inNav || cruiseOn || mapModeActive()) && !callOn && !pairOn && !fxOn) {
-        // 双击时间窗口大幅放宽至 650ms，距离容差放宽至 90 像素，从容易按，绝不误触滑动
-        if (lastMapTapAt > 0 && (now - lastMapTapAt <= 650) &&
-            abs(x[0] - lastMapTapX) <= 90 && abs(y[0] - lastMapTapY) <= 90) {
+        // 双击时间窗口放宽至 750ms；彻底解除两次点击必须在同一区域的苛刻限制（只要在有效触控圆内即可识别为双击）
+        float tdx = x[0] - CX, tdy = y[0] - CX;
+        if (lastMapTapAt > 0 && (now - lastMapTapAt <= 750) && (tdx * tdx + tdy * tdy <= 225.0f * 225.0f)) {
           mapZoomActive = true;
           touchEat = true;
           mapZoomStartX = x[0];
@@ -294,6 +294,7 @@ void touchPoll() {
           mapZoomStartScale = userMapScale;
           mapZoomHintUntil = now + 2500;
           lastMapTapAt = 0;
+          dragAbort(); // 终止任何残留的换页拖拽状态，确保完全进入缩放模式
           CompanionMode::startVibration(70, 30);
         }
       }
@@ -396,12 +397,12 @@ void touchPoll() {
       navDirty = true;
     }
 
-    if (callOn || pairOn || touchEat || fxOn) dragAbort();
+    if (callOn || pairOn || touchEat || fxOn || mapZoomActive) dragAbort();
     else {
-      // 导航模式下：若在双击等待窗口期（650ms 内）且位移较小时，优先等待双击缩放，避免误触发切页拖动
+      // 导航模式下：在双击等待窗口期（750ms）或处于地图缩放模式下，绝对禁止切页拖拽！
       bool inMap = (page == 0 && (inNav || cruiseOn || mapModeActive()));
-      if (inMap && lastMapTapAt > 0 && (now - lastMapTapAt <= 650) && abs(touchX1 - touchX0) < 45 && abs(touchY1 - touchY0) < 45) {
-        // 暂不触发换页拖动
+      if (inMap && lastMapTapAt > 0 && (now - lastMapTapAt <= 750)) {
+        // 处于第 1 次轻触后的等待双击窗口期：不触发换页拖动，保障双击操作
       } else {
         dragMove(touchX1 - touchX0, touchY1 - touchY0, now);
       }
@@ -421,11 +422,13 @@ void touchPoll() {
     } else if (page == 0 && (inNav || cruiseOn || mapModeActive()) && !callOn && !pairOn && !fxOn) {
       float vx = touchX1 - touchX0, vy = touchY1 - touchY0;
       touchVectorToCanvas(vx, vy);
-      // 放宽轻触判定：按压时长放宽至 480ms，位移容差放宽至 48 像素
-      if (pressDuration >= 15 && pressDuration < 480 && abs(vx) <= 48 && abs(vy) <= 48) {
+      // 放宽轻触判定：按压时长放宽至 550ms，位移容差放宽至 85 像素（防骑行手套与路面抖动）
+      if (pressDuration >= 15 && pressDuration < 550 && abs(vx) <= 85 && abs(vy) <= 85) {
         lastMapTapAt = now;
         lastMapTapX = touchX0;
         lastMapTapY = touchY0;
+        dragAbort();     // 若轻触期间微移曾触发 dragging，彻底终止，防止抬手触发 dragEnd 换页动画！
+        touchEat = true; // 拦截后续 dragEnd 处理
       }
     }
     if (page == 2 && volSliding) {
