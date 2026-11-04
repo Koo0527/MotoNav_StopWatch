@@ -12,7 +12,6 @@ class MotoNavApp : Application() {
     override fun onCreate() {
         super.onCreate()
         RideRecorder.init(this)
-        BootBrand.load(this)
         MusicBridge.init(this)
         CrashLog.install(this)
         Keys.apply(this)

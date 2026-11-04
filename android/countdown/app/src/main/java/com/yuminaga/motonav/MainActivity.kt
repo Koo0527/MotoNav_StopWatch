@@ -184,7 +184,6 @@ class MainActivity : AppCompatActivity() {
         MapFeeder.load(this)
         TrafficLightOverlay.load(this)
         CallWatcher.load(this)                       // v5.0 来电显示开关
-        Weather.init(this)                           // v5.4 天气
         Brightness.load(this)
         NaviVoice.load(this)                           // v3.8 导航语音设置
 
@@ -1087,20 +1086,7 @@ class MainActivity : AppCompatActivity() {
 
     /** 圆屏设置：来电显示、亮度、方向、配对的手机、连哪块圆屏 */
     private fun screenSection(card: LinearLayout) {
-        val bootSub = label("", 12f, SUB)
-        card.addView(settingRow("开机动画 · 摩托车品牌", null, textLink("选择") {
-            android.app.AlertDialog.Builder(this, android.app.AlertDialog.THEME_DEVICE_DEFAULT_DARK)
-                .setTitle("选择圆屏开机品牌")
-                .setSingleChoiceItems(BootBrand.labels, BootBrand.selected) { dialog, which ->
-                    BootBrand.select(which)
-                    bootSub.text = BootBrand.summary()
-                    dialog.dismiss()
-                }
-                .setNegativeButton("取消", null).show()
-        }, bootSub))
-        refreshers += { bootSub.text = BootBrand.summary() }
-        card.addView(note("适用 1.75 与 1.85B；保存后断电重启圆屏播放，关闭可直接进入原待机画面"))
-        card.addView(divider())
+        // 开机动画已精简秒进系统
         // v5.0 来电显示
         val callSub = label("", 12f, SUB).apply {                // v7.5 权限没给全时黄字提示，点一下去授权
             setOnClickListener {
@@ -1201,14 +1187,7 @@ class MainActivity : AppCompatActivity() {
         val amapSub = label("", 12f, SUB)
         card.addView(settingRow("高德 key", null, textLink("填写 / 修改") { showKeyDialog(first = false) }, amapSub))
         card.addView(divider())
-        card.addView(divider())
-        val weatherSub = label("和风天气：实况、逐小时、降水、空气、预警", 12f, SUB)
-        card.addView(settingRow("和风天气", null, textLink("配置") { showWeatherConfig() }, weatherSub))
-        card.addView(textLink("查看天气详情与数据来源") {
-            android.app.AlertDialog.Builder(this).setTitle("和风天气")
-                .setMessage(Weather.detailText()).setPositiveButton("关闭", null).show()
-        })
-        refreshers += { weatherSub.text = if (Weather.host().isBlank() || Weather.key().isBlank()) "未配置：请填写 API Host 与 API Key" else "已配置 · 仅查看天气时请求，10分钟缓存" }
+
         refreshers += {
             val a = Keys.amap(this)
             amapSub.text = Keys.mask(a) + (if (a.isEmpty()) "：导航、搜索、定位都用不了" else if (a != Keys.appliedAmap) "（重启 App 后生效）" else "") +
@@ -1217,30 +1196,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showWeatherConfig() {
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), dp(8)) }
-        box.addView(label("和风控制台 → 设置 → API Host；项目 → 凭据 → API Key。普通天气不再请求高德天气或 Open-Meteo。", 13f, SUB))
-        val host = EditText(this).apply { hint = "xxxx.qweatherapi.com"; setText(Weather.host()); setSingleLine(true) }
-        val key = EditText(this).apply {
-            hint = "和风 API Key"; setText(Weather.key()); setSingleLine(true)
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
-        }
-        box.addView(host); box.addView(key)
-        box.addView(label("四类权限：天气预报、分钟降水、空气质量、天气预警。只启用实际使用的服务，按账号额度计费。数据来源：和风天气 QWeather。", 12f, SUB))
-        box.addView(textLink("和风天气数据来源说明") { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://developer.qweather.com/attribution.html"))) })
-        val dialog = android.app.AlertDialog.Builder(this).setTitle("和风天气配置").setView(box)
-            .setNegativeButton("取消", null).setPositiveButton("保存", null).create()
-        dialog.setOnShowListener {
-            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                try {
-                    Weather.save(host.text.toString(), key.text.toString().trim())
-                    toast("已保存，滑到圆屏天气页查询")
-                    dialog.dismiss()
-                } catch(e: IllegalArgumentException) { toast(e.message ?: "请检查配置") }
-            }
-        }
-        dialog.show()
-    }
+
     private fun keySummary(): String {
         val a = Keys.hasAmap(this)
         return "高德 " + (if (a) "已填" else "没填")
@@ -1325,7 +1281,6 @@ class MainActivity : AppCompatActivity() {
                     "来电显示：${CallWatcher.lastInfo}（${CallWatcher.permsText(this)}）\n" +
                     "圆屏最后一次按下：${CallWatcher.lastTouch}\n" +
                     "音乐遥控：${MusicBridge.info}\n" +
-                    "天气：${Weather.info}\n" +
                     "分享路线：${AmapShare.info}\n" +
                     "播报压低音乐：${NaviVoice.duckInfo}\n" +
                     "语音广播：${NaviVoice.broadcastInfo}\n" +

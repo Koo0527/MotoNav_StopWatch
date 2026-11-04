@@ -424,11 +424,7 @@ object BleLink {
             screenBattery = if (pct < 0) "" else "$pct%" + (if (p[2] == "1") "⚡充电中" else "")
             return
         }
-        if (p.size >= 2 && p[0] == "BOOT") {
-            val id = p[1].toIntOrNull()
-            if (id == -1) BootBrand.onSaveError() else id?.let { BootBrand.onReply(it) }
-            return
-        }
+        if (p.size >= 2 && p[0] == "BOOT") return
         if (p.size >= 2 && p[0] == "U") return
         if (p.size >= 12 && p[0] == "Q") {             // v5.8 圆屏每帧各步骤用时（0.1 毫秒）
             markVerified()
@@ -571,7 +567,6 @@ object BleLink {
         pump()
         syncScreenClock(true)              // v8.3.24 连上就自动对时（圆屏待机时钟 + 时间显示用）
         MusicBridge.refresh(true)
-        BootBrand.sync()
         syncClock(true)
         MapFeeder.onLinkReady()            // v2.0 地图块和路线重发
     }
@@ -676,7 +671,7 @@ object BleLink {
             }
             ctrlQueue.removeAll { it.key == "#W" || it.key == "#WX" }
         }
-        sendEvent("#WXRESET")
+        // sendEvent("#WXRESET")
     }
 
     fun sendImage(slot: Int, w: Int, h: Int, data: ByteArray) {

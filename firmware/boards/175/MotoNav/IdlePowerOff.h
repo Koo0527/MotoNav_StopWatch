@@ -22,7 +22,7 @@ static inline void idlePowerSupplyUpdate(IdlePowerSupply *supply, uint32_t now,
                                          int axpStatus1) {
   supply->checkedAt = now;
   supply->sampled = true;
-  /* STATUS1 bit 5: VBUS-good. Full batteries still have this bit set on USB. */
+  /* STATUS1 bit 5: VBUS-good (or Vin>4000mV for StopWatch). */
   supply->batteryOnly = axpStatus1 >= 0 && axpStatus1 <= 255 &&
                         (axpStatus1 & 0x20) == 0;
 }
@@ -81,3 +81,4 @@ static inline bool idleLinkOffDueOnBattery(IdlePowerOffTimer *timer, uint32_t no
 }
 
 #endif
+

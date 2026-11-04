@@ -50,9 +50,7 @@ struct KeySetupView: View {
                         }
                     }
 
-                    CardView {
-                        WeatherSettingsView()
-                    }
+
 
                     PillButton(title: "保存地图 Key", color: ContentView.pink) { save() }
                     Button("以后再说") { dismiss() }

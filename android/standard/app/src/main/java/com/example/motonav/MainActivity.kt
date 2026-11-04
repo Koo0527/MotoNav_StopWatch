@@ -186,7 +186,6 @@ class MainActivity : AppCompatActivity() {
         NaviBridge.initPrivacy(this)
         MapFeeder.load(this)
         CallWatcher.load(this)                       // v5.0 来电显示开关
-        Weather.init(this)                           // v5.4 天气
         Brightness.load(this)
         NaviVoice.load(this)                           // v3.8 导航语音设置
 
@@ -1205,30 +1204,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showWeatherConfig() {
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), dp(8)) }
-        box.addView(label("和风控制台 → 设置 → API Host；项目 → 凭据 → API Key。普通天气不再请求高德天气或 Open-Meteo。", 13f, SUB))
-        val host = EditText(this).apply { hint = "xxxx.qweatherapi.com"; setText(Weather.host()); setSingleLine(true) }
-        val key = EditText(this).apply {
-            hint = "和风 API Key"; setText(Weather.key()); setSingleLine(true)
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
-        }
-        box.addView(host); box.addView(key)
-        box.addView(label("四类权限：天气预报、分钟降水、空气质量、天气预警。只启用实际使用的服务，按账号额度计费。数据来源：和风天气 QWeather。", 12f, SUB))
-        box.addView(textLink("和风天气数据来源说明") { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://developer.qweather.com/attribution.html"))) })
-        val dialog = android.app.AlertDialog.Builder(this).setTitle("和风天气配置").setView(box)
-            .setNegativeButton("取消", null).setPositiveButton("保存", null).create()
-        dialog.setOnShowListener {
-            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                try {
-                    Weather.save(host.text.toString(), key.text.toString().trim())
-                    toast("已保存，滑到圆屏天气页查询")
-                    dialog.dismiss()
-                } catch(e: IllegalArgumentException) { toast(e.message ?: "请检查配置") }
-            }
-        }
-        dialog.show()
-    }
+
     private fun keySummary(): String {
         val a = Keys.hasAmap(this)
         return "高德 " + (if (a) "已填" else "没填")
@@ -1311,7 +1287,6 @@ class MainActivity : AppCompatActivity() {
                     "来电显示：${CallWatcher.lastInfo}（${CallWatcher.permsText(this)}）\n" +
                     "圆屏最后一次按下：${CallWatcher.lastTouch}\n" +
                     "音乐遥控：${MusicBridge.info}\n" +
-                    "天气：${Weather.info}\n" +
                     "分享路线：${AmapShare.info}\n" +
                     "播报压低音乐：${NaviVoice.duckInfo}\n" +
                     "语音广播：${NaviVoice.broadcastInfo}\n" +

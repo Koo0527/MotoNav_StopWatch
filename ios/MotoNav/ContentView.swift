@@ -64,7 +64,7 @@ struct ContentView: View {
                             } else if index == 1 { displayCard }
                             else if index == 2 { voiceCard }
                             else if index == 3 { statusCard; settingsCard; debugCard }
-                            else { keyCard; Text(weather.detail).foregroundColor(Self.sub) }
+                            else { keyCard }
                         }.padding(16)
                     }.opacity(page == index ? 1 : 0).allowsHitTesting(page == index).accessibilityHidden(page != index)
                 }
@@ -407,10 +407,7 @@ struct ContentView: View {
     private var settingsCard: some View {
         CardView {
             Text("圆屏设置").foregroundColor(.white).bold()
-            Picker("开机动画", selection: $settings.bootBrand) {
-                ForEach(Settings.bootBrands.indices, id: \.self) { i in Text(Settings.bootBrands[i]).tag(i) }
-            }.tint(ContentView.cyan)
-            Text(settings.bootStatus).font(.caption).foregroundColor(ContentView.sub)
+            // 开机动画已精简秒进系统
             Toggle("蓝牙媒体按键（QQ 音乐等）", isOn: $settings.musicHID).foregroundColor(.white).tint(ContentView.pink)
             if settings.musicHID {
                 Text(ble.mediaHIDSupported
@@ -562,8 +559,7 @@ struct ContentView: View {
             Text("Key 设置").foregroundColor(.white).bold()
             Text("高德 Key：\(Settings.mask(settings.amapKeyInUse))（搜索、导航、巡航用）")
                 .font(.footnote).foregroundColor(settings.amapKeyInUse.isEmpty ? Color.orange : ContentView.sub)
-            Text("和风天气：\(weather.host.isEmpty || weather.key.isEmpty ? "未配置（可选）" : "已配置")")
-                .font(.footnote).foregroundColor(ContentView.sub)
+            // 天气功能已停用
             Button(settings.keysMissing ? "去填写" : "修改") { showKeys = true }
                 .foregroundColor(ContentView.cyan)
         }
@@ -592,8 +588,7 @@ struct ContentView: View {
                 \(navi.extraInfo)
                 小地图：\(map.infoText)
                 地图数据累计发送 \(ble.bulkKB) KB
-                天气：\(weather.info)
-                """)
+                                """)
                 .font(.caption.monospaced())
                 .foregroundColor(ContentView.sub)
                 .textSelection(.enabled)

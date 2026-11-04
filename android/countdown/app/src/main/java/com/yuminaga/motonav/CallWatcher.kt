@@ -121,12 +121,48 @@ object CallWatcher {
         BleLink.sendImage(2, 0, 0, ByteArray(0))
     }
 
-    /** v5.3 圆屏发来的触摸事件："T,A" 按住够久了要接听；"T,P,x,y" 按下的位置；v5.4 "T,W" 要天气 */
+    /** v5.3 圆屏发来的触摸事件："T,A" 按住够久了要接听；"T,P,x,y" 按下的位置；v8.0 常用地点与导航联动 */
     fun onScreenTouch(p: List<String>) {
         when (p.getOrNull(1)) {
             "P" -> lastTouch = "x=${p.getOrNull(2)} y=${p.getOrNull(3)}"
             "A" -> main.post { answer() }
-            "W" -> Weather.request()                                  // v5.4 圆屏滑到了天气页
+            "DEST_Q" -> main.post { syncDestinations() }
+            "DEST_GO" -> {
+                val idx = p.getOrNull(2)?.toIntOrNull() ?: 0
+                main.post { navigateDestination(idx) }
+            }
+            "SET_THEME" -> {
+                val t = p.getOrNull(2)?.toIntOrNull() ?: 0
+                ctx?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)?.edit()?.putInt("map_theme", t)?.apply()
+            }
+        }
+    }
+
+    fun syncDestinations() {
+        val c = ctx ?: return
+        BleLink.send("#DEST,CLR")
+        val favs = try { FavoritePlaces.load(c) } catch (_: Exception) { emptyList() }
+        var count = 0
+        for (f in favs.take(4)) {
+            BleLink.send("#DEST,ADD,0,${f.name},${f.addr}")
+            count++
+        }
+    }
+
+    private fun navigateDestination(idx: Int) {
+        val c = ctx ?: return
+        val favs = try { FavoritePlaces.load(c) } catch (_: Exception) { emptyList() }
+        val target = favs.getOrNull(idx) ?: return
+        val lat = target.lat
+        val lng = target.lng
+        if (lat != 0.0 && lng != 0.0) {
+            val intent = android.content.Intent(c, NavActivity::class.java).apply {
+                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra("lat", lat)
+                putExtra("lng", lng)
+                putExtra("name", target.name)
+            }
+            c.startActivity(intent)
         }
     }
 

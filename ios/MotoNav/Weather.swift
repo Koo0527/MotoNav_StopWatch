@@ -35,6 +35,7 @@ final class Weather: ObservableObject {
         BleLink.shared.clearWeather()
     }
     func request(force: Bool = false) {
+        return
         guard !host.isEmpty, !key.isEmpty else { info = "请先配置和风天气"; clearScreen(); return }
         if !force && !messages.isEmpty && Date().timeIntervalSince(lastAt) < cacheLifetime { push(); return }
         guard !busy, Date() >= retryAt else { return }

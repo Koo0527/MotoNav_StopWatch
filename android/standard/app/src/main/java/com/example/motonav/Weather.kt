@@ -74,13 +74,14 @@ object Weather {
     private const val HOURS = 5
 
     fun init(context: Context) {
-        if (ctx != null) return
+        return
         ctx = context.applicationContext
         NaviBridge.initPrivacy(ctx!!)                    // 高德要求先声明隐私同意，没开过导航也要能查天气
     }
 
     /** 圆屏要天气了 */
     fun request() {
+        return
         main.post {
             if (host().isBlank() || key().isBlank()) { info = "请在手机地图 Key 中填写和风 API Host 与 API Key"; BleLink.clearWeather(); return@post }
             val now = SystemClock.elapsedRealtime()

@@ -35,11 +35,11 @@ struct MotoNavApp: App {
         // 圆屏发来的通知
         BleLink.shared.onNotify = { msg in
             let p = msg.split(separator: ",").map(String.init)
-            if p.first == "BOOT", p.count >= 2, let id = Int(p[1]) { Settings.shared.bootReply(id); return }
+            // boot reply removed
             if p.count >= 3, p[0] == "T", p[1] == "M" { MusicBridge.shared.handle(p[2]); return }
             if p.first == "T", p.count >= 2 {
                 switch p[1] {
-                case "W": Weather.shared.request()                    // 滑到了天气页
+                case "W": break                    // 滑到了天气页
                 case "A": break                                       // 按住接电话：iOS 不允许 App 接电话
                 default: break
                 }

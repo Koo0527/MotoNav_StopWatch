@@ -42,7 +42,7 @@ final class Settings: ObservableObject {
     @Published var bootStatus = "连接圆屏后自动同步"
     func syncBootBrand() {
         bootStatus = "等待圆屏确认（需支持开机动画的固件）"
-        BleLink.shared.send("#BOOT,\(bootBrand)")
+        // BleLink.shared.send("#BOOT,\(bootBrand)")
     }
     func bootReply(_ id: Int) {
         bootStatus = id == bootBrand ? "已保存，下次开机生效" : "保存失败，请重新选择"

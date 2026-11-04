@@ -422,7 +422,7 @@ object BleLink {
         }
         if (p.size >= 2 && p[0] == "BOOT") {
             val id = p[1].toIntOrNull()
-            if (id == -1) BootBrand.onSaveError() else id?.let { BootBrand.onReply(it) }
+            return
             return
         }
         if (p.size >= 2 && p[0] == "U") return
@@ -564,7 +564,6 @@ object BleLink {
         }
         pump()
         MusicBridge.refresh(true)
-        BootBrand.sync()
         syncClock(true)
         MapFeeder.onLinkReady()            // v2.0 地图块和路线重发
     }
@@ -676,7 +675,7 @@ object BleLink {
             }
             ctrlQueue.removeAll { it.key == "#W" || it.key == "#WX" }
         }
-        sendEvent("#WXRESET")
+        // sendEvent("#WXRESET")
     }
 
     fun sendImage(slot: Int, w: Int, h: Int, data: ByteArray) {
