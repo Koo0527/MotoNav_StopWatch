@@ -5,14 +5,14 @@
 
 extern bool dragging;
 
-// 现代车规级柔和奢华科技配色定义
-#define LEAN_COLOR_SAFE   0x4ECB  // 柔和薄荷青绿 (优雅清爽不刺眼)
-#define LEAN_COLOR_WARN   0xFB65  // 落日暖金柔橙
-#define LEAN_COLOR_ALERT  0xFA68  // 柔和珊瑚红
-#define LEAN_RING_05G     0x1908  // 0.5G 柔和深暗环
-#define LEAN_RING_10G     0x29CE  // 1.0G 标准临界环
-#define LEAN_RING_15G     0x3A32  // 1.5G 极限边界环
-#define LEAN_CROSSHAIR    0x2106  // 十字准星柔和暗青灰
+// 车规级哑光质感配色（低眩光、沉稳自然、拒绝刺眼荧光色）
+#define LEAN_COLOR_SAFE   0x34EA  // 哑光薄荷青绿 (优雅清爽、低眩光)
+#define LEAN_COLOR_WARN   0xCB42  // 落日琥珀暖橙 (沉稳醒目、不刺眼)
+#define LEAN_COLOR_ALERT  0xB9C4  // 珊瑚哑光醇红 (清晰预警、柔和深邃)
+#define LEAN_RING_05G     0x2104  // 0.5G 极暗灰白标尺
+#define LEAN_RING_10G     0x3186  // 1.0G 哑光银灰标尺
+#define LEAN_RING_15G     0x4A69  // 1.5G 外层冷银边界
+#define LEAN_CROSSHAIR    0x2945  // 十字准星低对比暗灰
 
 void drawLeanMeter() {
   onWaitScreen = false;
@@ -35,7 +35,7 @@ void drawLeanMeter() {
   float curLean = LeanAngleMeter::leanAngle;
   float absCurLean = fabsf(curLean);
 
-  // 扇形实心色彩填充 (微四边形网格光栅化，柔和优雅配色)
+  // 扇形实心色彩填充：纯粹由当前刻度决定变色 (≤35° 薄荷青绿, 35°~50° 琥珀暖橙, >50° 珊瑚醇红)
   if (absCurLean >= 1.0f) {
     float a1 = 270.0f;
     float a2 = 270.0f + curLean;
@@ -71,34 +71,34 @@ void drawLeanMeter() {
       gfx->fillTriangle(x_in1, y_in1, x_out2, y_out2, x_in2, y_in2, sectorColor);
     }
 
-    // 扇面当前倾角边缘指针 (加粗纯白线)
+    // 扇面当前倾角边缘指针 (加粗纯白线，清晰醒目)
     float curRad = (270.0f + curLean) * (float)M_PI / 180.0f;
     float cCos = cosf(curRad), cSin = sinf(curRad);
-    int px1 = (int)lroundf(CX_DIAL + (R_IN - 4) * cCos), py1 = (int)lroundf(CY_DIAL + (R_IN - 4) * cSin);
-    int px2 = (int)lroundf(CX_DIAL + (R_OUT + 4) * cCos), py2 = (int)lroundf(CY_DIAL + (R_OUT + 4) * cSin);
+    int px1 = (int)lroundf(CX_DIAL + (R_IN - 5) * cCos), py1 = (int)lroundf(CY_DIAL + (R_IN - 5) * cSin);
+    int px2 = (int)lroundf(CX_DIAL + (R_OUT + 5) * cCos), py2 = (int)lroundf(CY_DIAL + (R_OUT + 5) * cSin);
     gfx->drawLine(px1, py1, px2, py2, C_WHITE);
     gfx->drawLine(px1 + 1, py1, px2 + 1, py2, C_WHITE);
     gfx->drawLine(px1 - 1, py1, px2 - 1, py2, C_WHITE);
   }
 
-  // 覆盖放射状刻度盘 (-60° 到 +60°)
+  // 覆盖放射状刻度盘 (-60° 到 +60°)：仪表刻度统一使用纯净高雅的白色与冷银灰，拒绝荧光色！
   for (int a = -60; a <= 60; a += 2) {
     float rad = (270.0f + a) * (float)M_PI / 180.0f;
     float cosA = cosf(rad), sinA = sinf(rad);
     int absA = abs(a);
 
-    float len = (absA % 30 == 0) ? 26.0f : ((absA % 10 == 0) ? 16.0f : ((absA % 5 == 0) ? 8.0f : 0.0f));
+    float len = (absA % 30 == 0) ? 28.0f : ((absA % 10 == 0) ? 18.0f : ((absA % 5 == 0) ? 10.0f : 0.0f));
     if (len == 0.0f) continue;
 
     uint16_t c;
     if (absA == 0) {
-      c = C_WHITE;
-    } else if (absA <= 35) {
-      c = (absA % 30 == 0) ? LEAN_COLOR_SAFE : 0x2446;
-    } else if (absA <= 50) {
-      c = (absA % 10 == 0) ? LEAN_COLOR_WARN : 0x6320;
+      c = C_WHITE; // 0° 正中主刻度
+    } else if (absA % 30 == 0) {
+      c = C_WHITE; // 30° / 60° 主刻度纯白
+    } else if (absA % 10 == 0) {
+      c = 0xCE79;  // 10° / 20° / 40° / 50° 冷银白
     } else {
-      c = (absA % 10 == 0) ? LEAN_COLOR_ALERT : 0x59A0;
+      c = 0x52AA;  // 5° 细分刻度暗冷银
     }
 
     int x1 = (int)lroundf(CX_DIAL + (R_OUT - len) * cosA);
@@ -115,23 +115,23 @@ void drawLeanMeter() {
     }
   }
 
-  // 0° 正上方中线强化
-  gfx->drawLine((int)CX_DIAL - 1, (int)(CY_DIAL - R_OUT), (int)CX_DIAL - 1, (int)(CY_DIAL - R_OUT + 28), C_WHITE);
-  gfx->drawLine((int)CX_DIAL,     (int)(CY_DIAL - R_OUT), (int)CX_DIAL,     (int)(CY_DIAL - R_OUT + 28), C_WHITE);
-  gfx->drawLine((int)CX_DIAL + 1, (int)(CY_DIAL - R_OUT), (int)CX_DIAL + 1, (int)(CY_DIAL - R_OUT + 28), C_WHITE);
+  // 0° 正上方中线强化 (3像素加粗纯白)
+  gfx->drawLine((int)CX_DIAL - 1, (int)(CY_DIAL - R_OUT), (int)CX_DIAL - 1, (int)(CY_DIAL - R_OUT + 30), C_WHITE);
+  gfx->drawLine((int)CX_DIAL,     (int)(CY_DIAL - R_OUT), (int)CX_DIAL,     (int)(CY_DIAL - R_OUT + 30), C_WHITE);
+  gfx->drawLine((int)CX_DIAL + 1, (int)(CY_DIAL - R_OUT), (int)CX_DIAL + 1, (int)(CY_DIAL - R_OUT + 30), C_WHITE);
 
-  // 刻度值数字 (全部改用抗锯齿平滑字符，彻底去像素化)
-  drawAaString((float)CX_DIAL, (float)(CY_DIAL - R_OUT - 12), "0", 1.8f, 1.0f, 10.0f, C_WHITE, true);
+  // 刻度值数字：字号全面增大，统一纯白与冷白，骑行一目了然
+  drawAaString((float)CX_DIAL, (float)(CY_DIAL - R_OUT - 14), "0", 2.2f, 1.25f, 12.0f, C_WHITE, true);
 
   float rad30 = 300.0f * (float)M_PI / 180.0f;
   float radM30 = 240.0f * (float)M_PI / 180.0f;
-  drawAaString(CX_DIAL + (R_OUT + 15) * cosf(rad30), CY_DIAL + (R_OUT + 15) * sinf(rad30), "30", 1.6f, 0.95f, 10.0f, LEAN_COLOR_SAFE, true);
-  drawAaString(CX_DIAL + (R_OUT + 16) * cosf(radM30), CY_DIAL + (R_OUT + 16) * sinf(radM30), "-30", 1.6f, 0.95f, 10.0f, LEAN_COLOR_SAFE, true);
+  drawAaString(CX_DIAL + (R_OUT + 18) * cosf(rad30), CY_DIAL + (R_OUT + 18) * sinf(rad30), "30", 2.0f, 1.15f, 11.5f, C_WHITE, true);
+  drawAaString(CX_DIAL + (R_OUT + 18) * cosf(radM30), CY_DIAL + (R_OUT + 18) * sinf(radM30), "-30", 2.0f, 1.15f, 11.5f, C_WHITE, true);
 
   float rad60 = 330.0f * (float)M_PI / 180.0f;
   float radM60 = 210.0f * (float)M_PI / 180.0f;
-  drawAaString(CX_DIAL + (R_OUT + 15) * cosf(rad60), CY_DIAL + (R_OUT + 15) * sinf(rad60), "60", 1.6f, 0.95f, 10.0f, LEAN_COLOR_ALERT, true);
-  drawAaString(CX_DIAL + (R_OUT + 16) * cosf(radM60), CY_DIAL + (R_OUT + 16) * sinf(radM60), "-60", 1.6f, 0.95f, 10.0f, LEAN_COLOR_ALERT, true);
+  drawAaString(CX_DIAL + (R_OUT + 18) * cosf(rad60), CY_DIAL + (R_OUT + 18) * sinf(rad60), "60", 2.0f, 1.15f, 11.5f, 0xCE79, true);
+  drawAaString(CX_DIAL + (R_OUT + 18) * cosf(radM60), CY_DIAL + (R_OUT + 18) * sinf(radM60), "-60", 2.0f, 1.15f, 11.5f, 0xCE79, true);
 
   // ==========================================
   // 3. 准备实时倾角动态数值与颜色
@@ -166,8 +166,8 @@ void drawLeanMeter() {
   gfx->drawLine(CX, CY + 8, CX, CY + GR, LEAN_CROSSHAIR);
 
   // 十字端点平滑抗锯齿微注
-  drawAaString(CX, CY - GR + 12, "^ ACC", 1.1f, 0.7f, 8.0f, 0x7BEF, true);
-  drawAaString(CX, CY + GR - 12, "v BRK", 1.1f, 0.7f, 8.0f, 0x7BEF, true);
+  drawAaString(CX, CY - GR + 13, "^ ACC", 1.2f, 0.75f, 8.5f, 0x7BEF, true);
+  drawAaString(CX, CY + GR - 13, "v BRK", 1.2f, 0.75f, 8.5f, 0x7BEF, true);
 
   // 动态大光圈小球
   const float MOVE_R = (float)(GR - 13);
@@ -185,12 +185,12 @@ void drawLeanMeter() {
   int bx = (int)lroundf(CX_DIAL + dx);
   int by = (int)lroundf(CY_DIAL + dy);
 
-  // 柔和微光小球 (中心高亮，外围薄荷青圆弧)
+  // 柔和微光小球 (中心高亮，外围哑光青绿圆弧)
   aaDisc((float)bx, (float)by, 8.5f, 0x1A29);
   gfx->drawCircle(bx, by, 8, LEAN_COLOR_SAFE);
   aaDisc((float)bx, (float)by, 3.5f, C_WHITE);
 
-  // 实时综合 G 值读数 (平滑滤波，位于圆心下方)
+  // 实时综合 G 值读数：大号字，位于圆心下方 (字号从 2.2f 提升到 2.8f)
   static float dispG = 0.0f;
   float targetG = LeanAngleMeter::gTotal;
   if (fabsf(targetG - dispG) > 0.015f) {
@@ -200,75 +200,75 @@ void drawLeanMeter() {
 
   char gNumBuf[16];
   snprintf(gNumBuf, sizeof(gNumBuf), "%.2f G", dispG);
-  drawAaString(CX, CY + 52, gNumBuf, 2.2f, 1.25f, 14.0f, LEAN_COLOR_SAFE, true);
+  drawAaString(CX, CY + 52, gNumBuf, 2.8f, 1.55f, 17.0f, C_WHITE, true);
 
   // ==========================================
-  // 5. 屏幕两侧半透明毛玻璃胶囊：MAX L 与 MAX R
+  // 5. 屏幕两侧半透明毛玻璃胶囊：MAX L 与 MAX R (大号字版)
   // ==========================================
-  const int SIDE_W = 86;
-  const int SIDE_H = 42;
-  const int SIDE_OFFSET = 169;
+  const int SIDE_W = 96;
+  const int SIDE_H = 48;
+  const int SIDE_OFFSET = 168;
   const int SIDE_L_X = CX - SIDE_OFFSET - SIDE_W / 2;
   const int SIDE_R_X = CX + SIDE_OFFSET - SIDE_W / 2;
   const int SIDE_Y   = CY - SIDE_H / 2;
 
-  // 左侧胶囊: MAX L (毛玻璃半透明)
-  drawTranslucentRoundRect(SIDE_L_X, SIDE_Y, SIDE_W, SIDE_H, 14, 0x0000, 185);
-  gfx->drawRoundRect(SIDE_L_X, SIDE_Y, SIDE_W, SIDE_H, 14, 0x31A6);
+  // 左侧胶囊: MAX L
+  drawTranslucentRoundRect(SIDE_L_X, SIDE_Y, SIDE_W, SIDE_H, 16, 0x0000, 185);
+  gfx->drawRoundRect(SIDE_L_X, SIDE_Y, SIDE_W, SIDE_H, 16, 0x31A6);
 
   char maxLStr[16];
   snprintf(maxLStr, sizeof(maxLStr), "-%d*", (int)lroundf(LeanAngleMeter::maxLeftLean));
-  drawAaString(SIDE_L_X + SIDE_W / 2, SIDE_Y + 11, "MAX L", 1.2f, 0.75f, 8.5f, 0x7BEF, true);
-  drawAaString(SIDE_L_X + SIDE_W / 2, SIDE_Y + 28, maxLStr, 1.8f, 1.05f, 11.5f, C_WHITE, true);
+  drawAaString(SIDE_L_X + SIDE_W / 2, SIDE_Y + 12, "MAX L", 1.45f, 0.90f, 10.0f, 0x8410, true);
+  drawAaString(SIDE_L_X + SIDE_W / 2, SIDE_Y + 32, maxLStr, 2.4f, 1.40f, 15.0f, C_WHITE, true);
 
-  // 右侧胶囊: MAX R (毛玻璃半透明)
-  drawTranslucentRoundRect(SIDE_R_X, SIDE_Y, SIDE_W, SIDE_H, 14, 0x0000, 185);
-  gfx->drawRoundRect(SIDE_R_X, SIDE_Y, SIDE_W, SIDE_H, 14, 0x31A6);
+  // 右侧胶囊: MAX R
+  drawTranslucentRoundRect(SIDE_R_X, SIDE_Y, SIDE_W, SIDE_H, 16, 0x0000, 185);
+  gfx->drawRoundRect(SIDE_R_X, SIDE_Y, SIDE_W, SIDE_H, 16, 0x31A6);
 
   char maxRStr[16];
   snprintf(maxRStr, sizeof(maxRStr), "+%d*", (int)lroundf(LeanAngleMeter::maxRightLean));
-  drawAaString(SIDE_R_X + SIDE_W / 2, SIDE_Y + 11, "MAX R", 1.2f, 0.75f, 8.5f, 0x7BEF, true);
-  drawAaString(SIDE_R_X + SIDE_W / 2, SIDE_Y + 28, maxRStr, 1.8f, 1.05f, 11.5f, C_WHITE, true);
+  drawAaString(SIDE_R_X + SIDE_W / 2, SIDE_Y + 12, "MAX R", 1.45f, 0.90f, 10.0f, 0x8410, true);
+  drawAaString(SIDE_R_X + SIDE_W / 2, SIDE_Y + 32, maxRStr, 2.4f, 1.40f, 15.0f, C_WHITE, true);
 
   // ==========================================
-  // 6. 底部第 1 行: MAX G 半透明胶囊卡片 (Y = 346)
+  // 6. 底部第 1 行: MAX G 极值胶囊卡片 (Y = 338, 大号字)
   // ==========================================
-  const int CAP1_Y = 346;
-  const int CAP1_W = 186;
-  const int CAP1_H = 30;
+  const int CAP1_Y = 338;
+  const int CAP1_W = 200;
+  const int CAP1_H = 34;
   const int CAP1_X = CX - CAP1_W / 2;
 
   bool justCalib = millis() < LeanAngleMeter::calibSuccessUntil;
   if (justCalib) {
-    drawTranslucentRoundRect(CAP1_X, CAP1_Y, CAP1_W, CAP1_H, 15, LEAN_COLOR_SAFE, 220);
-    gfx->drawRoundRect(CAP1_X, CAP1_Y, CAP1_W, CAP1_H, 15, LEAN_COLOR_SAFE);
-    drawAaString(CX, CAP1_Y + 15, "CALIBRATED OK", 1.6f, 0.95f, 11.0f, C_BLACK, true);
+    drawTranslucentRoundRect(CAP1_X, CAP1_Y, CAP1_W, CAP1_H, 17, LEAN_COLOR_SAFE, 220);
+    gfx->drawRoundRect(CAP1_X, CAP1_Y, CAP1_W, CAP1_H, 17, LEAN_COLOR_SAFE);
+    drawAaString(CX, CAP1_Y + 17, "CALIBRATED OK", 1.8f, 1.05f, 12.0f, C_BLACK, true);
   } else {
-    drawTranslucentRoundRect(CAP1_X, CAP1_Y, CAP1_W, CAP1_H, 15, 0x0000, 185);
-    gfx->drawRoundRect(CAP1_X, CAP1_Y, CAP1_W, CAP1_H, 15, 0x31A6);
+    drawTranslucentRoundRect(CAP1_X, CAP1_Y, CAP1_W, CAP1_H, 17, 0x0000, 185);
+    gfx->drawRoundRect(CAP1_X, CAP1_Y, CAP1_W, CAP1_H, 17, 0x31A6);
 
     char maxGBuf[16];
     snprintf(maxGBuf, sizeof(maxGBuf), "%.2f G", LeanAngleMeter::maxG);
-    drawAaString(CX - 42, CAP1_Y + 15, "MAX G", 1.3f, 0.8f, 9.0f, 0x7BEF, true);
-    drawAaString(CX + 34, CAP1_Y + 15, maxGBuf, 1.7f, 1.0f, 11.0f, LEAN_COLOR_SAFE, true);
+    drawAaString(CX - 46, CAP1_Y + 17, "MAX G", 1.5f, 0.95f, 10.5f, 0x8410, true);
+    drawAaString(CX + 38, CAP1_Y + 17, maxGBuf, 2.2f, 1.25f, 14.0f, C_WHITE, true);
   }
 
   // ==========================================
-  // 7. 底部第 2 行: 实时倾角数字毛玻璃胶囊卡片 (Y = 382)
+  // 7. 底部第 2 行: 实时倾角大号数字胶囊卡片 (Y = 378, 重点放大！)
   // ==========================================
-  const int CAP2_Y = 382;
-  const int CAP2_W = 186;
-  const int CAP2_H = 30;
+  const int CAP2_Y = 378;
+  const int CAP2_W = 200;
+  const int CAP2_H = 36;
   const int CAP2_X = CX - CAP2_W / 2;
 
-  drawTranslucentRoundRect(CAP2_X, CAP2_Y, CAP2_W, CAP2_H, 15, 0x0000, 185);
-  gfx->drawRoundRect(CAP2_X, CAP2_Y, CAP2_W, CAP2_H, 15, 0x31A6);
+  drawTranslucentRoundRect(CAP2_X, CAP2_Y, CAP2_W, CAP2_H, 18, 0x0000, 185);
+  gfx->drawRoundRect(CAP2_X, CAP2_Y, CAP2_W, CAP2_H, 18, 0x31A6);
 
-  drawAaString(CX - 42, CAP2_Y + 15, "LEAN", 1.3f, 0.8f, 9.0f, 0x7BEF, true);
-  drawAaString(CX + 34, CAP2_Y + 15, leanStr, 1.9f, 1.15f, 12.0f, leanColor, true);
+  drawAaString(CX - 46, CAP2_Y + 18, "LEAN", 1.5f, 0.95f, 10.5f, 0x8410, true);
+  drawAaString(CX + 38, CAP2_Y + 18, leanStr, 2.8f, 1.55f, 18.0f, leanColor, true);
 
   // 零位校准提示 (底部平滑微字)
-  drawAaString(CX, 418, "HOLD TO CALIBRATE", 1.2f, 0.75f, 8.5f, 0x4A69, true);
+  drawAaString(CX, 422, "HOLD TO CALIBRATE", 1.3f, 0.80f, 9.0f, 0x52AA, true);
 
   // 8. 底部页面指示点
   drawPageDots();

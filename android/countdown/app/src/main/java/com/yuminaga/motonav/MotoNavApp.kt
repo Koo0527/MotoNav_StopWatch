@@ -11,6 +11,7 @@ import android.app.Application
 class MotoNavApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        PowerSaver.init(this)
         RideRecorder.init(this)
         MusicBridge.init(this)
         CrashLog.install(this)

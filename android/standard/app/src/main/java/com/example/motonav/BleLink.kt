@@ -97,6 +97,7 @@ object BleLink {
         gatt = null
         old?.let { session.clear(it) }
         ready = false; verified = false; buildingsSupported = false; zmapSupported = false
+        handler.post { onConnectionChanged?.invoke(false) }
         capabilityQuerySent = false; rxChar = null; mtu = 23
         phyText = "?"; burstStart = 0L
         synchronized(lock) { inFlight = 0; ctrlQueue.clear(); imgQueue.clear(); bulkQ.clear() }
@@ -118,6 +119,7 @@ object BleLink {
     private val handler = Handler(Looper.getMainLooper())
 
     @Volatile var mtu = 23
+    @Volatile var onConnectionChanged: ((Boolean) -> Unit)? = null
     @Volatile private var ready = false        // 服务和大数据包都协商好了，可以发送
 
     // ---- 发送队列（v2 多通道优先级与并发流水线） ----
@@ -541,6 +543,7 @@ object BleLink {
         val pairing = try { g.device.bondState != BluetoothDevice.BOND_BONDED } catch (_: Exception) { true }
         session.move(g, Phase.MTU, if (verified) Phase.READY else Phase.AUTH, now(), if (verified) 0 else if (pairing) 120000 else 20000)
         ready = true
+        handler.post { onConnectionChanged?.invoke(true) }
         try { g.readPhy() } catch (_: Exception) {}
         status = if (verified) "已连接（高速模式，数据包 ${maxWrite()} 字节）" else "导航通道已连接，正在确认圆屏配对…"
         trace("channel ready verified=$verified mtu=$mtu")
