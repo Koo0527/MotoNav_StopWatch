@@ -121,7 +121,19 @@ void handleText(const String &m) {
     }
     return;                                 // 心跳
   }
-  if (m == "C") { stopArriveFx(); progReset(); resetNavState(); drawWaiting(WAIT_READY); return; }
+  if (m == "C") {
+    if (fxOn && !fxWp) {
+      // 目的地到达结算进行中：保留结算画面显示，仅重置底层导航后台数据，等待用户手动点击屏幕或按键退出！
+      progReset();
+      resetNavState();
+    } else {
+      stopArriveFx();
+      progReset();
+      resetNavState();
+      drawWaiting(WAIT_READY);
+    }
+    return;
+  }
 
   if (m.startsWith("#v,")) { speedKmh = m.substring(3).toInt(); navDirty = true; return; }
   if (m.startsWith("#k")) {
@@ -458,9 +470,15 @@ void handleText(const String &m) {
     String prevDir = navDir;
     navDir = m.substring(0, comma);
     // v7.1 导航中 → 到达：放特效（重连补发的 "A,0"、圆屏刚开机收到的都不放）
-    if (navDir == "A" && prevDir.length() && prevDir != "A" && page == 0) startArriveFx(false);
+    if (navDir == "A" && prevDir.length() && prevDir != "A") {
+      if (page != 0) page = 0;
+      startArriveFx(false);
+    }
     if (prevDir == "A" && navDir != "A") progReset();       // v7.3 到达后又开始新的导航：进度从头算
-    else if (navDir != "A" && fxOn) stopArriveFx();
+    else if (navDir != "A" && fxOn) {
+      // 途经点提示(fxWp)在收到新方向时可结束；目的地结算(!fxWp)绝不被普通方向数据冲刷，只等待用户点击或按键退出
+      if (fxWp) stopArriveFx();
+    }
     int comma2 = m.indexOf(',', comma + 1);
     if (comma2 > 0) {
       navDist = m.substring(comma + 1, comma2).toInt();

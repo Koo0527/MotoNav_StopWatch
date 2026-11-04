@@ -105,10 +105,15 @@ void buttonTick() {
   // 1. 到达目的地结算界面：按任意实体键立即退出结算返回主页
   if (fxOn) {
     if ((!a && lastA) || (!b && lastB)) {
-      stopArriveFx();
-      CompanionMode::startVibration(140, 50);
-      lastA = a; lastB = b;
-      return;
+      // 目的地结算前 600ms 防按键残留动作误触
+      if (!fxWp && (now - fxAt < 600)) {
+        // 忽略
+      } else {
+        stopArriveFx();
+        CompanionMode::startVibration(140, 50);
+        lastA = a; lastB = b;
+        return;
+      }
     }
     lastA = a; lastB = b;
     return;
@@ -320,9 +325,14 @@ void touchPoll() {
         // 4. 封面之外其它区域：不设 touchEat，正常允许 dragMove 整页拖拽换页！
       }
       if (fxOn && !callOn) {
-        stopArriveFx();
-        CompanionMode::startVibration(140, 50); // 触屏轻触退出也给予震动反馈
-        touchEat = true;
+        // 目的地结算前 600ms 防到达瞬间触屏误触
+        if (!fxWp && (now - fxAt < 600)) {
+          touchEat = true;
+        } else {
+          stopArriveFx();
+          CompanionMode::startVibration(140, 50); // 触屏轻触退出也给予震动反馈
+          touchEat = true;
+        }
       }          // v7.1 点一下结束到达特效
     }
     touchX1 = x[0]; touchY1 = y[0];

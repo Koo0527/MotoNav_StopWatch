@@ -612,12 +612,13 @@ void loop() {
     shownConn = conn;
     if (conn) {
       lastRxMs = millis();
-      drawWaiting(WAIT_READY);
+      if (!fxOn) drawWaiting(WAIT_READY);
     } else {
       bool wasNav = inNav;
       resetNavState();
       staleShown = false;
-      drawWaiting(wasNav ? WAIT_LOST : WAIT_NOLINK);   // 导航途中断开 → 红色 LINK LOST
+      // 目的地到达结算中(!fxWp)，即使断开连接也保持结算画面，不覆盖成红色 LINK LOST
+      if (!fxOn) drawWaiting(wasNav ? WAIT_LOST : WAIT_NOLINK);   // 导航途中断开 → 红色 LINK LOST
     }
   }
 
@@ -695,7 +696,10 @@ void loop() {
 
   // v7.1 到达特效：来电、配对优先；放完 / 被点掉后回到原来的画面
   static bool wasFx = false;
-  if (fxOn && (millis() - fxAt > fxDur || !conn)) fxOn = false;
+  // 途经点短提示(fxWp)在断连(!conn)或超时后退出；目的地结算(!fxWp)即使断连也保持，仅在5分钟超时或用户按键/触控时退出
+  if (fxOn && (millis() - fxAt > fxDur || (!conn && fxWp))) {
+    stopArriveFx();
+  }
   if (fxOn) {
     static unsigned long lastFxDraw = 0;
     if (!callOn && !pairOn && page == 0 && !sliding && millis() - lastFxDraw >= 33) {

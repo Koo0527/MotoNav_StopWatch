@@ -1,6 +1,8 @@
 #pragma once
 #include <Arduino.h>
 
+void resetNavState();
+
 // ================= v7.1 到达特效 =================
 // 到达目的地（"A,0"）：约 7 秒的庆祝动画——粉色放射光芒慢慢转、冲击波圆环、几轮彩色烟花、
 // 中间一面飘动的黑白格终点旗、"ARRIVED" 霓虹字，手机发了行程统计（"#O米/分钟/最高车速"）就逐字打出来。
@@ -45,7 +47,16 @@ void startArriveFx(bool wp) {
   }
 }
 
-void stopArriveFx() { fxOn = false; }
+void stopArriveFx() {
+  if (fxOn) {
+    bool wasDest = !fxWp;
+    fxOn = false;
+    if (wasDest) {
+      resetNavState();
+      progReset();
+    }
+  }
+}
 
 // 一圈 w 像素粗的圆环
 void fxRing(float r, int w, uint16_t c) {
