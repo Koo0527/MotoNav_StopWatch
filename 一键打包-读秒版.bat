@@ -1,6 +1,24 @@
 @echo off
 chcp 65001 >nul
+title MotoNav 安卓融合读秒版一键打包
+echo ======================================================================
+echo   MotoNav 安卓融合读秒版 (Countdown Edition) 一键打包工具
+echo ======================================================================
+echo.
+echo [提示] 融合读秒版包含车机多引擎与红绿灯读秒，需要 Apktool 与 Zig 编译环境。
+echo.
 cd /d "%~dp0"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Build-Countdown.ps1"
-if errorlevel 1 echo Build failed. See the error above.
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo ======================================================================
+    echo  [错误] 打包失败，请检查上方红字提示！
+    echo ======================================================================
+) else (
+    echo.
+    echo ======================================================================
+    echo  [成功] 读秒版 APK 打包完成！请查看 output/ 目录。
+    echo ======================================================================
+)
+echo.
 pause

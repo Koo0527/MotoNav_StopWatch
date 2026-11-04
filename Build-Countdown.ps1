@@ -4,41 +4,62 @@ param([string]$ProviderPath='',[string]$ApktoolPath='',[string]$JavaPath=$env:JA
 $ErrorActionPreference='Stop'
 $project=Join-Path $PSScriptRoot 'android/countdown'
 
-function Need-Path([string]$Value,[string]$Prompt) {
-    if(!$Value){$Value=Read-Host $Prompt}
+Write-Host "======================================================================" -ForegroundColor Magenta
+Write-Host "      MotoNav 安卓融合读秒版 (Countdown Edition) 自动化打包" -ForegroundColor Magenta
+Write-Host "======================================================================" -ForegroundColor Magenta
+Write-Host ""
+
+function Need-Path([string]$Value,[string]$Prompt,[string]$HelpInfo="") {
+    if(!$Value){
+        if ($HelpInfo) { Write-Host $HelpInfo -ForegroundColor Yellow }
+        $Value=Read-Host $Prompt
+    }
     $Value=$Value.Trim().Trim('"')
-    if(!(Test-Path -LiteralPath $Value)){throw "Path does not exist: $Value"}
+    if(!(Test-Path -LiteralPath $Value)){throw "路径不存在：$Value"}
     return [IO.Path]::GetFullPath($Value)
 }
 
-if($ProviderPath){$ProviderPath=Need-Path $ProviderPath 'Provider APK path'}
+if($ProviderPath){$ProviderPath=Need-Path $ProviderPath '车机底包 APK 路径'}
 
-# Auto-detect Apktool
+# 自动检测 Apktool
 if(!$ApktoolPath){
     $commonJar = "$env:USERPROFILE\scoop\apps\apktool\current\apktool.jar"
     if(Test-Path $commonJar){$ApktoolPath = $commonJar}
 }
-$ApktoolPath=Need-Path $ApktoolPath 'apktool.jar path'
+$ApktoolPath=Need-Path $ApktoolPath '请输入 apktool.jar 完整文件路径' '【提示】读秒版需反编译车机资源，请先下载 apktool.jar (例如从 https://github.com/iBotPeaches/Apktool/releases 获取)'
 if(Test-Path -PathType Container $ApktoolPath){
     $subJar = Join-Path $ApktoolPath 'apktool.jar'
     if(Test-Path $subJar){$ApktoolPath = $subJar}
 }
 
-# Auto-detect Java Home
-$JavaPath=Need-Path $JavaPath 'JDK root path (JAVA_HOME)'
+# 自动检测 Java
+if(!$JavaPath){
+    $cmdJava = Get-Command java -ErrorAction SilentlyContinue
+    if($cmdJava){
+        $binDir = Split-Path $cmdJava.Source
+        if(Test-Path (Join-Path $binDir 'keytool.exe')){
+            $JavaPath = Split-Path $binDir
+        }
+    }
+}
+$JavaPath=Need-Path $JavaPath '请输入 JDK 根目录 (JAVA_HOME)'
 
-# Auto-detect Android SDK
+# 自动检测 Android SDK
 if(!$SdkPath){
     $commonSdk = "$env:USERPROFILE\AppData\Local\Android\Sdk"
     if(Test-Path $commonSdk){$SdkPath = $commonSdk}
 }
-$SdkPath=Need-Path $SdkPath 'Android SDK root path'
+if(!$SdkPath){
+    $toolsSdk = Join-Path $PSScriptRoot '.tools\android-sdk'
+    if(Test-Path $toolsSdk){$SdkPath = $toolsSdk}
+}
+$SdkPath=Need-Path $SdkPath '请输入 Android SDK 根目录路径'
 
-# Auto-detect Gradle
+# 自动检测 Gradle
 if(!$GradlePath){$GradlePath=Join-Path $project 'gradlew.bat'}
-$GradlePath=Need-Path $GradlePath 'gradle.bat path'
+$GradlePath=Need-Path $GradlePath 'gradlew.bat 路径'
 
-# Auto-detect Zig
+# 自动检测 Zig
 if(!$ZigPath){
     $cmd=Get-Command zig -ErrorAction SilentlyContinue
     if($cmd){$ZigPath=$cmd.Source}
@@ -47,21 +68,22 @@ if(!$ZigPath){
         if(Test-Path $commonZig){$ZigPath = $commonZig}
     }
 }
-$ZigPath=Need-Path $ZigPath 'Zig 0.13.0 exe path'
+$ZigPath=Need-Path $ZigPath '请输入 Zig 0.13.0 可执行文件路径 (zig.exe)' '【提示】读秒版需 Zig 编译器编译 native 动态库 (https://ziglang.org/download/)'
 
 $flags=@((Join-Path $project 'build-countdown.py'),'--apktool',$ApktoolPath,
     '--java-home',$JavaPath,'--sdk',$SdkPath,'--gradle',$GradlePath,'--zig',$ZigPath)
 if($ProviderPath){$flags+=@('--provider',$ProviderPath)}
 if($Offline){$flags+='--offline'}
 
-Write-Host "Running build-countdown with:" -ForegroundColor Cyan
-Write-Host "  Apktool: $ApktoolPath"
-Write-Host "  Java:    $JavaPath"
-Write-Host "  SDK:     $SdkPath"
-Write-Host "  Zig:     $ZigPath"
-Write-Host "  Gradle:  $GradlePath"
-Write-Host ""
+Write-Host "正在启动 build-countdown 构建进程..." -ForegroundColor Cyan
+Write-Host "  Apktool: $ApktoolPath" -ForegroundColor DarkGray
+Write-Host "  Java:    $JavaPath" -ForegroundColor DarkGray
+Write-Host "  SDK:     $SdkPath" -ForegroundColor DarkGray
+Write-Host "  Zig:     $ZigPath" -ForegroundColor DarkGray
 
 & $PythonPath @flags
-if($LASTEXITCODE -ne 0){throw 'Countdown build failed. Review the first error above.'}
-Write-Host ('Output: '+(Join-Path $project 'output')) -ForegroundColor Green
+if($LASTEXITCODE -ne 0){throw '构建读秒版失败，请检查上方日志输出！'}
+
+Write-Host "======================================================================" -ForegroundColor Green
+Write-Host "  [成功] 读秒版构建完成！" -ForegroundColor Green
+Write-Host "======================================================================" -ForegroundColor Green

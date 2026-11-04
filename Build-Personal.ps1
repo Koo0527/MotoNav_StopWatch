@@ -1,143 +1,255 @@
 param([string]$JavaPath='', [string]$SdkPath='', [string]$GradlePath='', [switch]$Offline)
-$ErrorActionPreference='Stop'
-[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12
-$root=$PSScriptRoot
-$project=Join-Path $root 'android/standard'
-$tools=Join-Path $root '.tools'
+$ErrorActionPreference = 'Stop'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$root = $PSScriptRoot
+$project = Join-Path $root 'android/standard'
+$tools = Join-Path $root '.tools'
 
-function Download($url,$path) {
-    if(-not(Test-Path -LiteralPath $path)) {
-        Write-Host "Downloading $url"
-        Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile "$path.part"
-        Move-Item -LiteralPath "$path.part" -Destination $path -Force
+function Log-Step($step, $text) {
+    Write-Host "[$step] $text" -ForegroundColor Cyan
+}
+
+function Download-FileWithProgress($url, $destPath, $desc) {
+    if (Test-Path -LiteralPath $destPath) { return }
+    Write-Host "正在下载 $desc..." -ForegroundColor Yellow
+    Write-Host "  URL: $url" -ForegroundColor Gray
+    $partPath = "$destPath.part"
+    if (Test-Path -LiteralPath $partPath) { Remove-Item -LiteralPath $partPath -Force -ErrorAction SilentlyContinue }
+    
+    $webClient = New-Object System.Net.WebClient
+    $webClient.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+    try {
+        $webClient.DownloadFile($url, $partPath)
+        Move-Item -LiteralPath $partPath -Destination $destPath -Force
+        Write-Host "  $desc 下载完成！" -ForegroundColor Green
+    } catch {
+        if (Test-Path -LiteralPath $partPath) { Remove-Item -LiteralPath $partPath -Force -ErrorAction SilentlyContinue }
+        throw "下载 $desc 失败：$($_.Exception.Message)"
+    } finally {
+        $webClient.Dispose()
     }
 }
 
-# 1. Auto-detect Java Home
-if(-not $JavaPath){
-    if($env:JAVA_HOME -and (Test-Path (Join-Path $env:JAVA_HOME 'bin/java.exe'))){
-        $JavaPath=$env:JAVA_HOME
+Write-Host "======================================================================" -ForegroundColor Magenta
+Write-Host "      MotoNav 安卓普通版 (Standard Edition) 自动化个人专属打包" -ForegroundColor Magenta
+Write-Host "======================================================================" -ForegroundColor Magenta
+Write-Host ""
+
+# --------------------------------------------------------------------
+# 步骤 1: 检测或安装 Java 21 环境
+# --------------------------------------------------------------------
+Log-Step "1/5" "检测 Java 运行与编译环境..."
+if (-not $JavaPath) {
+    # 优先检测环境变量 JAVA_HOME
+    if ($env:JAVA_HOME -and (Test-Path (Join-Path $env:JAVA_HOME 'bin/java.exe'))) {
+        $JavaPath = $env:JAVA_HOME
     } else {
-        $cmdJava=Get-Command java -ErrorAction SilentlyContinue
-        if($cmdJava){
-            $binDir=Split-Path $cmdJava.Source
-            if(Test-Path (Join-Path $binDir 'keytool.exe')){
-                $JavaPath=Split-Path $binDir
+        # 检测系统 PATH 中的 java
+        $cmdJava = Get-Command java -ErrorAction SilentlyContinue
+        if ($cmdJava) {
+            $binDir = Split-Path $cmdJava.Source
+            if (Test-Path (Join-Path $binDir 'keytool.exe')) {
+                $JavaPath = Split-Path $binDir
+            }
+        }
+    }
+    # 检测常见安装路径 (Android Studio jbr 或 Program Files)
+    if (-not $JavaPath) {
+        $commonPaths = @(
+            "$env:ProgramFiles\Android\Android Studio\jbr",
+            "$env:LOCALAPPDATA\Programs\Android Studio\jbr",
+            "$env:ProgramFiles\Java\jdk-21",
+            "$env:ProgramFiles\Eclipse Adoptium\jdk-21*"
+        )
+        foreach ($cp in $commonPaths) {
+            $matched = Get-ChildItem -Path $cp -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($matched -and (Test-Path (Join-Path $matched.FullName 'bin/keytool.exe'))) {
+                $JavaPath = $matched.FullName
+                break
             }
         }
     }
 }
-if(-not $JavaPath){
-    $jdk=Get-ChildItem -Path "$tools/jdk/*/bin/java.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-    if(-not $jdk){
-        New-Item -ItemType Directory -Force $tools | Out-Null
-        Download 'https://api.adoptium.net/v3/binary/latest/21/ga/windows/x64/jdk/hotspot/normal/eclipse' "$tools/jdk.zip"
-        Expand-Archive -LiteralPath "$tools/jdk.zip" -DestinationPath "$tools/jdk" -Force
-        $jdk=Get-ChildItem -Path "$tools/jdk/*/bin/java.exe" | Select-Object -First 1
-    }
-    $JavaPath=Split-Path (Split-Path $jdk.FullName)
-}
-$env:JAVA_HOME=$JavaPath
-$env:PATH="$JavaPath\bin;"+$env:PATH
 
-# 2. Auto-detect Android SDK
-if(-not $SdkPath){
-    $candidateProps=@(
+if (-not $JavaPath) {
+    $jdk = Get-ChildItem -Path "$tools/jdk/*/bin/java.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $jdk) {
+        New-Item -ItemType Directory -Force $tools | Out-Null
+        # 优先使用微软国内 Azure CDN 高速分发的 OpenJDK 21（国内连接极速且稳定）
+        $msJdkUrl = 'https://aka.ms/download-jdk/microsoft-jdk-21-windows-x64.zip'
+        $adoptiumUrl = 'https://api.adoptium.net/v3/binary/latest/21/ga/windows/x64/jdk/hotspot/normal/eclipse'
+        try {
+            Download-FileWithProgress $msJdkUrl "$tools/jdk.zip" "OpenJDK 21 运行环境 (微软官方高速 CDN)"
+        } catch {
+            Write-Host "微软 CDN 下载异常，尝试使用备选 Adoptium 源..." -ForegroundColor Yellow
+            Download-FileWithProgress $adoptiumUrl "$tools/jdk.zip" "OpenJDK 21 运行环境 (Adoptium 官方源)"
+        }
+        Write-Host "正在解压 Java 环境..." -ForegroundColor Yellow
+        Expand-Archive -LiteralPath "$tools/jdk.zip" -DestinationPath "$tools/jdk" -Force
+        $jdk = Get-ChildItem -Path "$tools/jdk/*/bin/java.exe" | Select-Object -First 1
+    }
+    $JavaPath = Split-Path (Split-Path $jdk.FullName)
+}
+
+$env:JAVA_HOME = $JavaPath
+$env:PATH = "$JavaPath\bin;" + $env:PATH
+Write-Host "  Java 路径: $JavaPath" -ForegroundColor DarkGray
+
+# --------------------------------------------------------------------
+# 步骤 2: 检测或安装 Android SDK
+# --------------------------------------------------------------------
+Log-Step "2/5" "检测 Android SDK 构建套件..."
+if (-not $SdkPath) {
+    $candidateProps = @(
         (Join-Path $project 'local.properties'),
         (Join-Path $root 'android/countdown/local.properties')
     )
-    foreach($lp in $candidateProps){
-        if(Test-Path $lp){
-            $line=Get-Content $lp | Where-Object { $_ -match '^sdk\.dir\s*=\s*(.+)$' } | Select-Object -First 1
-            if($line){
-                $val=($line -split '=',2)[1].Trim()
-                $val=$val.Replace('\: ',': ').Replace('\:',':').Replace('\/','/').Replace('\','/')
-                if(Test-Path $val){$SdkPath=$val; break}
+    foreach ($lp in $candidateProps) {
+        if (Test-Path $lp) {
+            $line = Get-Content $lp | Where-Object { $_ -match '^sdk\.dir\s*=\s*(.+)$' } | Select-Object -First 1
+            if ($line) {
+                $val = ($line -split '=', 2)[1].Trim()
+                $val = $val.Replace('\: ', ': ').Replace('\:', ':').Replace('\/', '/').Replace('\', '/')
+                if (Test-Path $val) { $SdkPath = $val; break }
             }
         }
     }
-    if(-not $SdkPath -and $env:ANDROID_HOME -and (Test-Path $env:ANDROID_HOME)){$SdkPath=$env:ANDROID_HOME}
-    if(-not $SdkPath -and $env:ANDROID_SDK_ROOT -and (Test-Path $env:ANDROID_SDK_ROOT)){$SdkPath=$env:ANDROID_SDK_ROOT}
-    if(-not $SdkPath){
-        $defaultSdk=Join-Path $env:USERPROFILE 'AppData/Local/Android/Sdk'
-        if(Test-Path $defaultSdk){$SdkPath=$defaultSdk}
+    if (-not $SdkPath -and $env:ANDROID_HOME -and (Test-Path $env:ANDROID_HOME)) { $SdkPath = $env:ANDROID_HOME }
+    if (-not $SdkPath -and $env:ANDROID_SDK_ROOT -and (Test-Path $env:ANDROID_SDK_ROOT)) { $SdkPath = $env:ANDROID_SDK_ROOT }
+    if (-not $SdkPath) {
+        $defaultSdk = Join-Path $env:USERPROFILE 'AppData/Local/Android/Sdk'
+        if (Test-Path $defaultSdk) { $SdkPath = $defaultSdk }
     }
-    if(-not $SdkPath){$SdkPath=Join-Path $tools 'android-sdk'}
+    if (-not $SdkPath) { $SdkPath = Join-Path $tools 'android-sdk' }
 }
-$env:ANDROID_HOME=$SdkPath
-$env:ANDROID_SDK_ROOT=$SdkPath
 
-# 3. Check apksigner and build-tools
-$apksigner=Get-ChildItem -Path "$SdkPath/build-tools/*/apksigner.bat" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
-$hasPlatform=Test-Path "$SdkPath/platforms/android-35/android.jar"
+$env:ANDROID_HOME = $SdkPath
+$env:ANDROID_SDK_ROOT = $SdkPath
 
-if(-not $apksigner -or -not $hasPlatform) {
+# 自动静默注入 Android SDK 协议许可，杜绝命令行弹出复杂英文并阻断用户
+function Ensure-SdkLicenses($rootSdk) {
+    $licDir = Join-Path $rootSdk 'licenses'
+    New-Item -ItemType Directory -Force $licDir | Out-Null
+    $licFile = Join-Path $licDir 'android-sdk-license'
+    $knownHashes = "24333f8a63b1d8e60fe4ac64ab9463cbd8648bfa`n8933bad161af4178b1185d1a37fbf41ea5269c55`nd56f5187479451eabf01fb78af6dfcb131a6481e`n"
+    [IO.File]::WriteAllText($licFile, $knownHashes)
+    $previewLic = Join-Path $licDir 'android-sdk-preview-license'
+    [IO.File]::WriteAllText($previewLic, "84831b9409646a918e30573bab4c9c91346d8abd`n")
+}
+Ensure-SdkLicenses $SdkPath
+
+$apksigner = Get-ChildItem -Path "$SdkPath/build-tools/*/apksigner.bat" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
+$hasPlatform = Test-Path "$SdkPath/platforms/android-35/android.jar"
+
+if (-not $apksigner -or -not $hasPlatform) {
     New-Item -ItemType Directory -Force $tools | Out-Null
-    $manager=Join-Path $SdkPath 'cmdline-tools/latest/bin/sdkmanager.bat'
-    if(-not(Test-Path $manager)) {
-        Download 'https://dl.google.com/android/repository/commandlinetools-win-15859902_latest.zip' "$tools/sdk-tools.zip"
+    $manager = Join-Path $SdkPath 'cmdline-tools/latest/bin/sdkmanager.bat'
+    if (-not (Test-Path $manager)) {
+        Download-FileWithProgress 'https://dl.google.com/android/repository/commandlinetools-win-15859902_latest.zip' "$tools/sdk-tools.zip" "Android SDK 命令行工具套件"
+        Write-Host "正在解压 Android SDK 命令行工具..." -ForegroundColor Yellow
         Expand-Archive -LiteralPath "$tools/sdk-tools.zip" -DestinationPath "$tools/sdk-unpacked" -Force
         New-Item -ItemType Directory -Force "$SdkPath/cmdline-tools/latest" | Out-Null
         Copy-Item -Path "$tools/sdk-unpacked/cmdline-tools/*" -Destination "$SdkPath/cmdline-tools/latest" -Recurse -Force
     }
-    Write-Host 'Review the Android SDK licenses; enter y only if you accept.'
-    & $manager "--sdk_root=$SdkPath" --licenses
-    if($LASTEXITCODE -ne 0){throw 'SDK license setup failed.'}
+    Ensure-SdkLicenses $SdkPath
+    Write-Host "正在静默安装 Android SDK 核心平台包 (API 35 与 Build-Tools 35)..." -ForegroundColor Yellow
     & $manager "--sdk_root=$SdkPath" 'platforms;android-35' 'build-tools;35.0.0' 'platform-tools'
-    if($LASTEXITCODE -ne 0){throw 'SDK installation failed.'}
-    $apksigner=Get-ChildItem -Path "$SdkPath/build-tools/*/apksigner.bat" | Sort-Object FullName -Descending | Select-Object -First 1
+    if ($LASTEXITCODE -ne 0) { throw 'Android SDK 套件自动下载安装失败，请检查网络！' }
+    $apksigner = Get-ChildItem -Path "$SdkPath/build-tools/*/apksigner.bat" | Sort-Object FullName -Descending | Select-Object -First 1
 }
 
-Write-Host "Building MotoNav Standard with:" -ForegroundColor Cyan
-Write-Host "  Java:    $JavaPath"
-Write-Host "  SDK:     $SdkPath"
-Write-Host "  Signer:  $($apksigner.FullName)"
-Write-Host ""
+Write-Host "  SDK 路径:  $SdkPath" -ForegroundColor DarkGray
+Write-Host "  签名工具:  $($apksigner.FullName)" -ForegroundColor DarkGray
 
-$identity=Join-Path $project 'personal.properties'
-$signing=Join-Path $project 'keystore/keystore.properties'
-$keyfile=Join-Path $project 'keystore/personal.jks'
+# --------------------------------------------------------------------
+# 步骤 3: 生成个人专属 ApplicationId 与独立数字证书
+# --------------------------------------------------------------------
+Log-Step "3/5" "配置个人专属随机包名与独立数字证书..."
+$identity = Join-Path $project 'personal.properties'
+$signing = Join-Path $project 'keystore/keystore.properties'
+$keyfile = Join-Path $project 'keystore/personal.jks'
 New-Item -ItemType Directory -Force (Split-Path -Parent $keyfile) | Out-Null
-if(-not(Test-Path $identity)) {
-    if(Test-Path $keyfile){throw 'personal.properties missing. Restore it from your backup before continuing.'}
-    $appId='com.motonav.u'+[Guid]::NewGuid().ToString('N')
-    [IO.File]::WriteAllText($identity,"personalApplicationId=$appId`n")
+
+if (-not (Test-Path $identity)) {
+    if (Test-Path $keyfile) { throw 'personal.properties 缺失！若曾生成过证书，请从备份中恢复，防止覆盖导致高德 Key 无法识别。' }
+    $appId = 'com.motonav.u' + [Guid]::NewGuid().ToString('N')
+    [IO.File]::WriteAllText($identity, "personalApplicationId=$appId`n")
 }
-$appId=(([IO.File]::ReadAllText($identity)).Trim() -split '=',2)[1].Trim()
-if($appId -notmatch '^com\.motonav\.u[a-f0-9]{32}$'){throw 'Invalid personal application ID.'}
-if(-not(Test-Path $signing)) {
-    if(Test-Path $keyfile){throw 'Signing settings missing. Restore your backup.'}
-    $password=[Guid]::NewGuid().ToString('N')+[Guid]::NewGuid().ToString('N')
-    $env:MOTONAV_SIGN_PASSWORD=$password
+$appId = (([IO.File]::ReadAllText($identity)).Trim() -split '=', 2)[1].Trim()
+if ($appId -notmatch '^com\.motonav\.u[a-f0-9]{32}$') { throw 'personal.properties 中的包名格式不正确。' }
+
+if (-not (Test-Path $signing)) {
+    if (Test-Path $keyfile) { throw 'keystore.properties 缺失，请从备份中恢复。' }
+    $password = [Guid]::NewGuid().ToString('N') + [Guid]::NewGuid().ToString('N')
+    $env:MOTONAV_SIGN_PASSWORD = $password
     & "$JavaPath/bin/keytool.exe" -genkeypair -storetype JKS -keystore $keyfile -storepass:env MOTONAV_SIGN_PASSWORD -keypass:env MOTONAV_SIGN_PASSWORD -alias motonav -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=MotoNav Personal,O=MotoNav,C=CN'
-    if($LASTEXITCODE -ne 0){throw 'Certificate generation failed.'}
-    [IO.File]::WriteAllText($signing,"storeFile=personal.jks`nstorePassword=$password`nkeyAlias=motonav`nkeyPassword=$password`n")
+    if ($LASTEXITCODE -ne 0) { throw '专属签名数字证书生成失败。' }
+    [IO.File]::WriteAllText($signing, "storeFile=personal.jks`nstorePassword=$password`nkeyAlias=motonav`nkeyPassword=$password`n")
 }
-if(-not(Test-Path $keyfile)){throw 'Signing certificate missing. Restore your backup; do not generate a replacement.'}
-$props=ConvertFrom-StringData ([IO.File]::ReadAllText($signing))
-$env:MOTONAV_SIGN_PASSWORD=$props.storePassword
-$out=Join-Path $root 'output'
+if (-not (Test-Path $keyfile)) { throw '未找到 personal.jks 证书文件。' }
+
+$props = ConvertFrom-StringData ([IO.File]::ReadAllText($signing))
+$env:MOTONAV_SIGN_PASSWORD = $props.storePassword
+$out = Join-Path $root 'output'
 New-Item -ItemType Directory -Force $out | Out-Null
 & "$JavaPath/bin/keytool.exe" -exportcert -keystore $keyfile -storepass:env MOTONAV_SIGN_PASSWORD -alias motonav -file "$out/certificate.der"
-if($LASTEXITCODE -ne 0){throw 'Certificate export failed.'}
-$fingerprint=(Get-FileHash -LiteralPath "$out/certificate.der" -Algorithm SHA1).Hash -replace '(..)(?!$)','$1:'
-[IO.File]::WriteAllText("$out/Application-info.txt","Package: $appId`r`nSHA1: $fingerprint`r`n")
-$escapedSdk=$SdkPath.Replace('\','/').Replace(':','\:')
-[IO.File]::WriteAllText("$project/local.properties","sdk.dir=$escapedSdk`n")
-if(-not $GradlePath){$GradlePath=Join-Path $project 'gradlew.bat'}
+if ($LASTEXITCODE -ne 0) { throw '证书公钥导出失败。' }
+$fingerprint = (Get-FileHash -LiteralPath "$out/certificate.der" -Algorithm SHA1).Hash -replace '(..)(?!$)', '$1:'
+
+# 写入便于用户复制的文本
+$infoContent = "======================================================================`r`n" +
+               "  高德开放平台 (console.amap.com) 申请 Key 所需信息：`r`n" +
+               "======================================================================`r`n`r`n" +
+               "包名 (Package Name):`r`n$appId`r`n`r`n" +
+               "SHA1 安全码:`r`n$fingerprint`r`n`r`n" +
+               "说明：在开放平台创建应用 -> 添加 Key -> 服务平台选 Android 平台，依次粘贴上方包名和 SHA1 即可免费获取 Key！`r`n"
+[IO.File]::WriteAllText("$out/Application-info.txt", $infoContent)
+
+# 写入 local.properties 供 Gradle 识别 SDK 路径
+$escapedSdk = $SdkPath.Replace('\', '/').Replace(':', '\:')
+[IO.File]::WriteAllText("$project/local.properties", "sdk.dir=$escapedSdk`n")
+
+# --------------------------------------------------------------------
+# 步骤 4: 执行 Gradle 编译
+# --------------------------------------------------------------------
+Log-Step "4/5" "正在执行 Gradle 自动化编译与打包（请稍候 1~3 分钟）..."
+if (-not $GradlePath) { $GradlePath = Join-Path $project 'gradlew.bat' }
 Push-Location -LiteralPath $project
 try {
-    $buildArgs=@('--no-daemon','--max-workers=1','-Dorg.gradle.jvmargs=-Xmx1536m -Dfile.encoding=UTF-8','-Pkotlin.compiler.execution.strategy=in-process',"-PpersonalApplicationId=$appId",'assembleRelease')
-    if($Offline){$buildArgs=@('--offline')+$buildArgs}
+    $buildArgs = @('--no-daemon', '--max-workers=1', '-Dorg.gradle.jvmargs=-Xmx1536m -Dfile.encoding=UTF-8', '-Pkotlin.compiler.execution.strategy=in-process', "-PpersonalApplicationId=$appId", 'assembleRelease')
+    if ($Offline) { $buildArgs = @('--offline') + $buildArgs }
     & $GradlePath @buildArgs
-    if($LASTEXITCODE -ne 0){throw 'Build failed. See the messages above.'}
-} finally {Pop-Location}
-$apk=Join-Path $project 'app/build/outputs/apk/release/app-release.apk'
+    if ($LASTEXITCODE -ne 0) { throw 'Gradle 编译失败，请检查上方日志输出！' }
+} finally {
+    Pop-Location
+}
+
+# --------------------------------------------------------------------
+# 步骤 5: 验证签名并导出 APK
+# --------------------------------------------------------------------
+Log-Step "5/5" "校验 APK 签名并导出安装包..."
+$apk = Join-Path $project 'app/build/outputs/apk/release/app-release.apk'
 & $apksigner.FullName verify --verbose --print-certs $apk
-if($LASTEXITCODE -ne 0){throw 'APK signature verification failed.'}
-Copy-Item -LiteralPath $apk -Destination "$out/MotoNav-personal.apk" -Force
-$env:MOTONAV_SIGN_PASSWORD=$null
-Write-Host "Done: $out" -ForegroundColor Green
-Write-Host "Package: $appId"
-Write-Host "SHA1: $fingerprint"
-Write-Host 'Back up android/standard/personal.properties and android/standard/keystore. Never share them.'
+if ($LASTEXITCODE -ne 0) { throw 'APK 签名有效性校验失败！' }
+
+$finalApk = Join-Path $out "MotoNav-personal.apk"
+Copy-Item -LiteralPath $apk -Destination $finalApk -Force
+$env:MOTONAV_SIGN_PASSWORD = $null
+
+Write-Host ""
+Write-Host "======================================================================" -ForegroundColor Green
+Write-Host "                [打包成功] 个人专属 APK 生成完毕！" -ForegroundColor Green
+Write-Host "======================================================================" -ForegroundColor Green
+Write-Host ""
+Write-Host "【专属包名】: $appId" -ForegroundColor Yellow
+Write-Host "【证书SHA1】: $fingerprint" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "  1. 手机安装包路径: output\MotoNav-personal.apk" -ForegroundColor White
+Write-Host "  2. 高德Key申请信息已保存至: output\Application-info.txt" -ForegroundColor White
+Write-Host "  3. 请在【高德开放平台】(console.amap.com) 免费申请 Android 平台 Key，" -ForegroundColor White
+Write-Host "     打开手机 App 在“地图 Key”设置中填入即可立即开始导航！" -ForegroundColor White
+Write-Host ""
+Write-Host "【备份提示】后续更新覆盖安装时，请妥善备份以下文件，以保证签名与包名不变：" -ForegroundColor Gray
+Write-Host "  - android/standard/personal.properties" -ForegroundColor Gray
+Write-Host "  - android/standard/keystore/personal.jks" -ForegroundColor Gray
+Write-Host "======================================================================" -ForegroundColor Green
