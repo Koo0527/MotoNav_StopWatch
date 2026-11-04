@@ -134,7 +134,7 @@ void drawLeanMeter() {
   drawAaString(CX_DIAL + (R_OUT + 18) * cosf(radM60), CY_DIAL + (R_OUT + 18) * sinf(radM60), "-60", 2.0f, 1.15f, 11.5f, 0xCE79, true);
 
   // ==========================================
-  // 3. 准备实时倾角动态数值与颜色
+  // 3. 实时倾角大号数字：移至 G 值表上方黄金空白区 (Y = 104)
   // ==========================================
   char leanStr[16];
   if (absCurLean < 0.5f) {
@@ -148,6 +148,10 @@ void drawLeanMeter() {
   uint16_t leanColor = (absCurLean < 0.5f) ? C_WHITE :
                        ((absCurLean <= 35.0f) ? LEAN_COLOR_SAFE :
                        ((absCurLean <= 50.0f) ? LEAN_COLOR_WARN : LEAN_COLOR_ALERT));
+
+  // 正上方微注与超大号实时角度数字（视线最自然的倾角集中区）
+  drawAaString(CX, 82, "LEAN", 1.15f, 0.70f, 8.5f, 0x7BEF, true);
+  drawAaString(CX, 104, leanStr, 3.2f, 1.75f, 20.0f, leanColor, true);
 
   // ==========================================
   // 4. G 值表圆圈与多层同心标尺 (0.5G / 1.0G / 1.5G)
@@ -190,7 +194,7 @@ void drawLeanMeter() {
   gfx->drawCircle(bx, by, 8, LEAN_COLOR_SAFE);
   aaDisc((float)bx, (float)by, 3.5f, C_WHITE);
 
-  // 实时综合 G 值读数：大号字，位于圆心下方 (字号从 2.2f 提升到 2.8f)
+  // 平滑滤波准备实时综合 G 值数值（移至底部卡片显示，圆盘内不再有重叠文字遮挡）
   static float dispG = 0.0f;
   float targetG = LeanAngleMeter::gTotal;
   if (fabsf(targetG - dispG) > 0.015f) {
@@ -200,7 +204,6 @@ void drawLeanMeter() {
 
   char gNumBuf[16];
   snprintf(gNumBuf, sizeof(gNumBuf), "%.2f G", dispG);
-  drawAaString(CX, CY + 52, gNumBuf, 2.8f, 1.55f, 17.0f, C_WHITE, true);
 
   // ==========================================
   // 5. 屏幕两侧半透明毛玻璃胶囊：MAX L 与 MAX R (大号字版)
@@ -254,7 +257,7 @@ void drawLeanMeter() {
   }
 
   // ==========================================
-  // 7. 底部第 2 行: 实时倾角大号数字胶囊卡片 (Y = 378, 重点放大！)
+  // 7. 底部第 2 行: 实时综合 G 值大号数字胶囊卡片 (Y = 378，由倾角腾出)
   // ==========================================
   const int CAP2_Y = 378;
   const int CAP2_W = 200;
@@ -264,8 +267,8 @@ void drawLeanMeter() {
   drawTranslucentRoundRect(CAP2_X, CAP2_Y, CAP2_W, CAP2_H, 18, 0x0000, 185);
   gfx->drawRoundRect(CAP2_X, CAP2_Y, CAP2_W, CAP2_H, 18, 0x31A6);
 
-  drawAaString(CX - 46, CAP2_Y + 18, "LEAN", 1.5f, 0.95f, 10.5f, 0x8410, true);
-  drawAaString(CX + 38, CAP2_Y + 18, leanStr, 2.8f, 1.55f, 18.0f, leanColor, true);
+  drawAaString(CX - 46, CAP2_Y + 18, "G-FORCE", 1.45f, 0.90f, 10.0f, 0x8410, true);
+  drawAaString(CX + 38, CAP2_Y + 18, gNumBuf, 2.4f, 1.35f, 15.0f, C_WHITE, true);
 
   // 零位校准提示 (底部平滑微字)
   drawAaString(CX, 422, "HOLD TO CALIBRATE", 1.3f, 0.80f, 9.0f, 0x52AA, true);
